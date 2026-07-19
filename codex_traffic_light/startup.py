@@ -17,8 +17,12 @@ def startup_file() -> Path:
         / "Start Menu"
         / "Programs"
         / "Startup"
-        / "CodexTrafficLight.vbs"
+        / "CodexDesktopPet.vbs"
     )
+
+
+def legacy_startup_file() -> Path:
+    return startup_file().with_name("CodexTrafficLight.vbs")
 
 
 def _escape_vbs(value: str) -> str:
@@ -39,13 +43,18 @@ def launch_command() -> str:
 def set_start_with_windows(enabled: bool) -> None:
     path = startup_file()
     if not enabled:
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            pass
+        for target in (path, legacy_startup_file()):
+            try:
+                target.unlink()
+            except FileNotFoundError:
+                pass
         return
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        legacy_startup_file().unlink()
+    except FileNotFoundError:
+        pass
     command = _escape_vbs(launch_command())
     content = (
         'Set shell = CreateObject("WScript.Shell")\n'
@@ -55,5 +64,4 @@ def set_start_with_windows(enabled: bool) -> None:
 
 
 def starts_with_windows() -> bool:
-    return startup_file().exists()
-
+    return startup_file().exists() or legacy_startup_file().exists()

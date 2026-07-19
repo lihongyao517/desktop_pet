@@ -7,7 +7,7 @@ from codex_traffic_light.integration import install_hooks, uninstall_hooks
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Codex Traffic Light hook bridge")
+    parser = argparse.ArgumentParser(description="Codex Desktop Pet hook bridge")
     parser.add_argument("--hook", action="store_true", help="Read one Codex hook event from stdin")
     parser.add_argument("--install-hooks", action="store_true", help="Merge monitor hooks into Codex config")
     parser.add_argument("--uninstall-hooks", action="store_true", help="Remove only monitor-owned hooks")

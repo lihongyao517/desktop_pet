@@ -1,8 +1,10 @@
 $ErrorActionPreference = "Stop"
-$installDir = Join-Path $env:LOCALAPPDATA "CodexTrafficLight"
-$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex Traffic Light.lnk"
-$startupFile = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\CodexTrafficLight.vbs"
-$hookExe = Join-Path $installDir "CodexTrafficLightHook.exe"
+$installDir = Join-Path $env:LOCALAPPDATA "CodexDesktopPet"
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex Desktop Pet.lnk"
+$legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex Traffic Light.lnk"
+$startupFile = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\CodexDesktopPet.vbs"
+$legacyStartupFile = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\CodexTrafficLight.vbs"
+$hookExe = Join-Path $installDir "CodexDesktopPetHook.exe"
 $hookScript = Join-Path $installDir "hook_main.py"
 
 if (Test-Path -LiteralPath $hookExe) {
@@ -11,12 +13,16 @@ if (Test-Path -LiteralPath $hookExe) {
     python $hookScript --uninstall-hooks | Out-Host
 }
 
-Get-Process -Name "CodexTrafficLight" -ErrorAction SilentlyContinue | Stop-Process -Force
-if (Test-Path -LiteralPath $desktopShortcut) {
-    Remove-Item -LiteralPath $desktopShortcut -Force
+Get-Process -Name "CodexDesktopPet" -ErrorAction SilentlyContinue | Stop-Process -Force
+foreach ($shortcut in ($desktopShortcut, $legacyDesktopShortcut)) {
+    if (Test-Path -LiteralPath $shortcut) {
+        Remove-Item -LiteralPath $shortcut -Force
+    }
 }
-if (Test-Path -LiteralPath $startupFile) {
-    Remove-Item -LiteralPath $startupFile -Force
+foreach ($startup in ($startupFile, $legacyStartupFile)) {
+    if (Test-Path -LiteralPath $startup) {
+        Remove-Item -LiteralPath $startup -Force
+    }
 }
 if (Test-Path -LiteralPath $installDir) {
     $resolved = (Resolve-Path -LiteralPath $installDir).Path
@@ -28,5 +34,4 @@ if (Test-Path -LiteralPath $installDir) {
     }
 }
 
-Write-Host "Codex Traffic Light uninstalled." -ForegroundColor Green
-
+Write-Host "Codex Desktop Pet uninstalled." -ForegroundColor Green

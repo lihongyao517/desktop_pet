@@ -5,20 +5,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 $sourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$installDir = Join-Path $env:LOCALAPPDATA "CodexTrafficLight"
+$installDir = Join-Path $env:LOCALAPPDATA "CodexDesktopPet"
 $desktop = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = Join-Path $desktop "Codex Traffic Light.lnk"
-$distUi = Join-Path $sourceRoot "dist\CodexTrafficLight.exe"
-$distHook = Join-Path $sourceRoot "dist\CodexTrafficLightHook.exe"
+$shortcutPath = Join-Path $desktop "Codex Desktop Pet.lnk"
+$legacyShortcutPath = Join-Path $desktop "Codex Traffic Light.lnk"
+$startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
+$legacyStartupFile = Join-Path $startupDir "CodexTrafficLight.vbs"
+$migrateStartup = Test-Path -LiteralPath $legacyStartupFile
+$distUi = Join-Path $sourceRoot "dist\CodexDesktopPet.exe"
+$distHook = Join-Path $sourceRoot "dist\CodexDesktopPetHook.exe"
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 
 $mode = "source"
 if ((Test-Path -LiteralPath $distUi) -and (Test-Path -LiteralPath $distHook)) {
-    Copy-Item -LiteralPath $distUi -Destination (Join-Path $installDir "CodexTrafficLight.exe") -Force
-    Copy-Item -LiteralPath $distHook -Destination (Join-Path $installDir "CodexTrafficLightHook.exe") -Force
-    $uiTarget = Join-Path $installDir "CodexTrafficLight.exe"
-    $hookTarget = Join-Path $installDir "CodexTrafficLightHook.exe"
+    Copy-Item -LiteralPath $distUi -Destination (Join-Path $installDir "CodexDesktopPet.exe") -Force
+    Copy-Item -LiteralPath $distHook -Destination (Join-Path $installDir "CodexDesktopPetHook.exe") -Force
+    $uiTarget = Join-Path $installDir "CodexDesktopPet.exe"
+    $hookTarget = Join-Path $installDir "CodexDesktopPetHook.exe"
     $uiArguments = ""
     $mode = "exe"
 } else {
@@ -41,8 +45,11 @@ $shortcut.TargetPath = $uiTarget
 $shortcut.Arguments = $uiArguments
 $shortcut.WorkingDirectory = $installDir
 $shortcut.IconLocation = $uiTarget
-$shortcut.Description = "Codex task status traffic light"
+$shortcut.Description = "Codex stick-figure desktop pet"
 $shortcut.Save()
+if (Test-Path -LiteralPath $legacyShortcutPath) {
+    Remove-Item -LiteralPath $legacyShortcutPath -Force
+}
 
 if ($mode -eq "exe") {
     & $hookTarget --install-hooks | Out-Host
@@ -50,13 +57,12 @@ if ($mode -eq "exe") {
     & $hookTarget (Join-Path $installDir "hook_main.py") --install-hooks | Out-Host
 }
 
-if ($StartWithWindows) {
+if ($StartWithWindows -or $migrateStartup) {
     Push-Location -LiteralPath $installDir
     try {
         if ($mode -eq "exe") {
-            $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
             New-Item -ItemType Directory -Path $startupDir -Force | Out-Null
-            $startupFile = Join-Path $startupDir "CodexTrafficLight.vbs"
+            $startupFile = Join-Path $startupDir "CodexDesktopPet.vbs"
             $escaped = ('"' + $uiTarget + '"').Replace('"', '""')
             @(
                 'Set shell = CreateObject("WScript.Shell")'
@@ -69,6 +75,9 @@ if ($StartWithWindows) {
         Pop-Location
     }
 }
+if (Test-Path -LiteralPath $legacyStartupFile) {
+    Remove-Item -LiteralPath $legacyStartupFile -Force
+}
 
 if (-not $NoLaunch) {
     if ($mode -eq "exe") {
@@ -79,8 +88,7 @@ if (-not $NoLaunch) {
 }
 
 Write-Host ""
-Write-Host "Codex Traffic Light installed." -ForegroundColor Green
+Write-Host "Codex Desktop Pet installed." -ForegroundColor Green
 Write-Host "Desktop shortcut: $shortcutPath"
 Write-Host "Install folder:   $installDir"
-Write-Host "Open /hooks in Codex once and trust 'Codex Traffic Light status bridge'." -ForegroundColor Yellow
-
+Write-Host "Open /hooks in Codex once and trust 'Codex Desktop Pet status bridge'." -ForegroundColor Yellow

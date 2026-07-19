@@ -11,11 +11,10 @@ if (-not $NoClean) {
     $common += "--clean"
 }
 
-python -m PyInstaller @common --windowed --name CodexTrafficLight main.py
-python -m PyInstaller @common --console --name CodexTrafficLightHook hook_main.py
+python -m PyInstaller @common --windowed --name CodexDesktopPet main.py
+python -m PyInstaller @common --console --name CodexDesktopPetHook hook_main.py
 
 Write-Host ""
 Write-Host "Build complete:" -ForegroundColor Green
-Write-Host "  $root\dist\CodexTrafficLight.exe"
-Write-Host "  $root\dist\CodexTrafficLightHook.exe"
-
+Write-Host "  $root\dist\CodexDesktopPet.exe"
+Write-Host "  $root\dist\CodexDesktopPetHook.exe"

@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 import json
 import os
 
-from .paths import settings_path
+from .paths import legacy_settings_path, settings_path
 
 
 @dataclass(slots=True)
@@ -19,6 +19,10 @@ class Settings:
     @classmethod
     def load(cls) -> "Settings":
         path = settings_path()
+        if not path.exists():
+            legacy = legacy_settings_path()
+            if legacy.exists():
+                path = legacy
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -37,4 +41,3 @@ class Settings:
             encoding="utf-8",
         )
         os.replace(temporary, path)
-

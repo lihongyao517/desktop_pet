@@ -12,7 +12,8 @@ from typing import Any
 from .paths import codex_home
 
 
-MARKER = "Codex Traffic Light status bridge"
+MARKER = "Codex Desktop Pet status bridge"
+LEGACY_MARKER = "Codex Traffic Light status bridge"
 HOOK_EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
@@ -39,7 +40,7 @@ def _python_console_executable() -> Path:
 def hook_command() -> str:
     if getattr(sys, "frozen", False):
         executable = Path(sys.executable).resolve()
-        helper = executable.with_name("CodexTrafficLightHook.exe")
+        helper = executable.with_name("CodexDesktopPetHook.exe")
         if not helper.exists():
             raise FileNotFoundError(f"Missing hook helper: {helper}")
         return subprocess.list2cmdline([str(helper), "--hook"])
@@ -59,7 +60,13 @@ def _is_ours(handler: Any) -> bool:
         return False
     status = str(handler.get("statusMessage") or handler.get("status_message") or "")
     command = str(handler.get("commandWindows") or handler.get("command_windows") or handler.get("command") or "")
-    return MARKER in status or "CodexTrafficLightHook" in command or "hook_main.py" in command
+    return (
+        MARKER in status
+        or LEGACY_MARKER in status
+        or "CodexDesktopPetHook" in command
+        or "CodexTrafficLightHook" in command
+        or "hook_main.py" in command
+    )
 
 
 def _clean_groups(groups: Any) -> list[Any]:
