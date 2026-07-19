@@ -12,6 +12,7 @@ class Settings:
     sound_enabled: bool = True
     always_on_top: bool = True
     compact_mode: bool = False
+    full_scene_origin_y: int = 55
     approval_repeat_seconds: int = 45
     window_x: int | None = None
     window_y: int | None = None

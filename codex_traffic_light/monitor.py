@@ -12,6 +12,7 @@ from typing import Any
 
 from .models import (
     AggregateSnapshot,
+    CANCELLED,
     COMPLETED,
     ERROR,
     IDLE,
@@ -90,6 +91,8 @@ class SessionLogParser:
         if size < self.offset:
             self.offset = 0
             self.partial = b""
+        elif size == self.offset:
+            return self.snapshot
 
         first_read = self.offset == 0
         start = self.offset
@@ -205,7 +208,13 @@ class SessionLogParser:
             elif event_type == "task_complete":
                 self._update(status=COMPLETED, phase="本轮已完成", updated_at=stamp)
             elif event_type == "turn_aborted":
-                self._update(status=ERROR, phase="任务已中止", updated_at=stamp)
+                reason = str(payload.get("reason") or "").lower()
+                failed = any(word in reason for word in ("error", "fail", "crash", "panic"))
+                self._update(
+                    status=ERROR if failed else CANCELLED,
+                    phase="任务异常中止" if failed else "任务已终止",
+                    updated_at=stamp,
+                )
             return
 
         if record_type != "response_item":
@@ -235,17 +244,43 @@ class CodexMonitor:
         self._state_mtimes: dict[Path, int] = {}
         self._titles: dict[str, str] = {}
         self._title_mtime = 0
+        self._unread_ids: set[str] | None = None
+        self._unread_mtime = 0
         self._last_discovery = 0.0
+        self._last_full_discovery = 0.0
 
     def scan(self) -> AggregateSnapshot:
         self._load_titles()
+        self._load_unread_ids()
         self._scan_hook_states()
         self._discover_sessions()
         for parser in list(self.parsers.values()):
             snapshot = parser.read_updates()
             self._merge(snapshot)
         self._apply_titles()
+        self._apply_unread_ids()
         return resolve_aggregate(self.tasks.values())
+
+    def _load_unread_ids(self) -> None:
+        path = self.home / ".codex-global-state.json"
+        try:
+            mtime = path.stat().st_mtime_ns
+        except OSError:
+            return
+        if mtime == self._unread_mtime:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+            atoms = data.get("electron-persisted-atom-state", {})
+            unread_by_host = atoms.get("unread-thread-ids-by-host-v1", {})
+            local = unread_by_host.get("local", [])
+            if not isinstance(local, list):
+                return
+            unread_ids = {str(item) for item in local if item}
+        except (OSError, AttributeError, json.JSONDecodeError):
+            return
+        self._unread_ids = unread_ids
+        self._unread_mtime = mtime
 
     def _load_titles(self) -> None:
         path = self.home / "session_index.jsonl"
@@ -309,20 +344,27 @@ class CodexMonitor:
 
     def _discover_sessions(self) -> None:
         now = time.time()
-        if now - self._last_discovery < 2.0:
+        if now - self._last_discovery < 0.4:
             return
         self._last_discovery = now
         sessions = self.home / "sessions"
         try:
-            candidates = [
-                path
-                for path in sessions.rglob("rollout-*.jsonl")
-                if path.is_file()
-            ]
+            today = datetime.now()
+            current_dir = sessions / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
+            candidates = [path for path in current_dir.glob("rollout-*.jsonl") if path.is_file()]
+            if not self.parsers or now - self._last_full_discovery >= 30:
+                self._last_full_discovery = now
+                candidates.extend(
+                    path for path in sessions.rglob("rollout-*.jsonl") if path.is_file()
+                )
         except OSError:
             return
-        candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-        for path in candidates[:_MAX_SESSION_FILES]:
+        unique = tuple(dict.fromkeys(candidates))
+        try:
+            ordered = sorted(unique, key=lambda path: path.stat().st_mtime, reverse=True)
+        except OSError:
+            return
+        for path in ordered[:_MAX_SESSION_FILES]:
             self.parsers.setdefault(path, SessionLogParser(path))
 
     def _merge(self, incoming: TaskSnapshot) -> None:
@@ -352,9 +394,17 @@ class CodexMonitor:
             if title and title != task.title:
                 self.tasks[session_id] = task.with_title(title)
 
+    def _apply_unread_ids(self) -> None:
+        if self._unread_ids is None:
+            return
+        for session_id, task in tuple(self.tasks.items()):
+            unread = session_id in self._unread_ids
+            if task.unread != unread:
+                self.tasks[session_id] = replace(task, unread=unread)
+
 
 class MonitorWorker:
-    def __init__(self, monitor: CodexMonitor | None = None, interval: float = 0.6) -> None:
+    def __init__(self, monitor: CodexMonitor | None = None, interval: float = 0.2) -> None:
         self.monitor = monitor or CodexMonitor()
         self.interval = interval
         self._lock = threading.Lock()
@@ -385,4 +435,3 @@ class MonitorWorker:
                 # A partially written or future log format must not kill the widget.
                 pass
             self._stop.wait(self.interval)
-

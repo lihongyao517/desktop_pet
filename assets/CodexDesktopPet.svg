@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Desktop Pet icon</title>
+  <desc id="desc">A detailed stick figure working at a laptop beside a fish tank.</desc>
+  <rect x="42" y="42" width="940" height="940" rx="190" fill="#20282f"/>
+  <rect x="66" y="66" width="892" height="892" rx="168" fill="none" stroke="#52616a" stroke-width="12"/>
+  <ellipse cx="500" cy="843" rx="353" ry="58" fill="#13191d" opacity="0.72"/>
+
+  <!-- Fish tank -->
+  <path d="M683 258h213l-15 352H700z" fill="#bfecef" stroke="#f7f9f8" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M692 337h195l-12 263H704z" fill="#65c3cb" opacity="0.78"/>
+  <path d="M704 542c44-31 79 17 122-6 20-11 36-7 51 4l-3 60H706z" fill="#f2d37e"/>
+  <path d="M733 551v-84m0 35-25-30m25 11 30-34M839 551v-67m0 28-24-26m24 7 25-33" fill="none" stroke="#238d68" stroke-width="13" stroke-linecap="round"/>
+  <g fill="#ff8c55" stroke="#20282f" stroke-width="8" stroke-linejoin="round">
+    <ellipse cx="802" cy="422" rx="39" ry="23"/>
+    <path d="m765 422-35-27v54z"/>
+  </g>
+  <circle cx="822" cy="415" r="5" fill="#20282f"/>
+  <g fill="none" stroke="#f7f9f8" stroke-width="7">
+    <circle cx="752" cy="390" r="9"/><circle cx="724" cy="363" r="6"/><circle cx="850" cy="475" r="11"/>
+  </g>
+  <path d="M716 287h158M718 318h154" stroke="#e8ffff" stroke-width="8" stroke-linecap="round" opacity="0.82"/>
+
+  <!-- Desk and laptop -->
+  <path d="M379 602h376v47H379z" fill="#aebbc1" stroke="#f7f9f8" stroke-width="16" stroke-linejoin="round"/>
+  <path d="m411 648-26 188m333-188 25 188" fill="none" stroke="#f7f9f8" stroke-width="24" stroke-linecap="round"/>
+  <path d="m486 399h205l-25 195H457z" fill="#303a40" stroke="#f7f9f8" stroke-width="16" stroke-linejoin="round"/>
+  <path d="m505 423h163l-19 145H482z" fill="#dff9f4"/>
+  <path d="M521 464h91m-98 39h116m-124 39h76" fill="none" stroke="#2e7d78" stroke-width="12" stroke-linecap="round"/>
+  <path d="M617 542h20" stroke="#f4a62a" stroke-width="12" stroke-linecap="round"/>
+  <path d="m450 590h221l35 34H425z" fill="#65727a" stroke="#f7f9f8" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- Seated stick figure -->
+  <path d="M194 474v194h126V487c0-28-22-50-50-50h-26c-28 0-50 17-50 37z" fill="#52616a" stroke="#f7f9f8" stroke-width="16" stroke-linejoin="round"/>
+  <g fill="none" stroke="#f7f9f8" stroke-width="25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M318 409 340 605 431 684 464 830"/>
+    <path d="M340 605 305 716 347 830"/>
+    <path d="M330 455 421 536 511 615"/>
+    <path d="M332 482 389 590 560 615"/>
+    <path d="M445 830h58M326 830h58"/>
+  </g>
+  <g fill="#fffdf8" stroke="#20282f" stroke-width="10">
+    <circle cx="505" cy="615" r="17"/><circle cx="557" cy="615" r="17"/>
+  </g>
+  <circle cx="304" cy="324" r="91" fill="#fffdf8" stroke="#f7f9f8" stroke-width="18"/>
+  <path d="M275 311h15m45 0h15M319 349h28" fill="none" stroke="#20282f" stroke-width="12" stroke-linecap="round"/>
+  <path d="M291 407h74m-4 3 74 45" fill="none" stroke="#f4a62a" stroke-width="19" stroke-linecap="round"/>
+  <path d="M219 293c18-46 67-75 116-59" fill="none" stroke="#52616a" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- Mug and fine highlights -->
+  <path d="M400 535h60v67h-60z" fill="#fff4d8" stroke="#f7f9f8" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M460 549h22v33h-22M414 517c-15-20 15-31 0-52m27 52c15-20-15-31 0-52" fill="none" stroke="#d7dee3" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="871" cy="205" r="17" fill="#f4a62a"/>
+  <path d="M838 205h-31m97 0h31m-64-33v-31m0 97v31" stroke="#f4a62a" stroke-width="10" stroke-linecap="round"/>
+</svg>

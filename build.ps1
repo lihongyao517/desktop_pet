@@ -6,7 +6,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $root
 
-$common = @("--noconfirm", "--onefile")
+python tools\build_icon.py
+
+$icon = Join-Path $root "assets\CodexDesktopPet.ico"
+$common = @("--noconfirm", "--onefile", "--icon", $icon)
 if (-not $NoClean) {
     $common += "--clean"
 }

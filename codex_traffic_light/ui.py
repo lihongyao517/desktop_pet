@@ -8,11 +8,31 @@ from tkinter import messagebox
 
 from .audio import play_async
 from .integration import hooks_installed, install_hooks
-from .models import APPROVAL, COMPLETED, ERROR, IDLE, RUNNING, AggregateSnapshot
+from .models import (
+    APPROVAL,
+    CANCELLED,
+    COMPLETED,
+    ERROR,
+    IDLE,
+    RUNNING,
+    AggregateSnapshot,
+)
 from .monitor import MonitorWorker
 from .settings import Settings
 from .startup import set_start_with_windows, starts_with_windows
-from .windows import flash_window, open_codex
+from .tray import SystemTray
+from .windows import (
+    acquire_single_instance,
+    close_named_handle,
+    consume_named_event,
+    create_named_event,
+    flash_window,
+    focus_window_by_title,
+    open_codex,
+    open_codex_thread,
+    release_single_instance,
+    signal_named_event,
+)
 
 
 TRANSPARENT = "#010203"
@@ -31,8 +51,45 @@ STATUS_STYLE = {
     ERROR: ("遇到异常", RED),
     RUNNING: ("正在工作", AMBER),
     COMPLETED: ("任务完成", GREEN),
+    CANCELLED: ("任务已终止", MUTED),
     IDLE: ("空闲待命", GREEN),
 }
+
+TASK_STATUS_STYLE = {
+    APPROVAL: ("待批准", RED),
+    RUNNING: ("运行中", AMBER),
+    ERROR: ("异常", RED),
+    CANCELLED: ("已终止", MUTED),
+    COMPLETED: ("已完成", GREEN),
+    IDLE: ("空闲", GREEN),
+}
+
+
+def anchored_window_position(
+    window_x: int,
+    window_y: int,
+    old_origin: tuple[int, int],
+    new_origin: tuple[int, int],
+) -> tuple[int, int]:
+    """Keep the scene origin fixed while the surrounding canvas changes size."""
+    return (
+        window_x + old_origin[0] - new_origin[0],
+        window_y + old_origin[1] - new_origin[1],
+    )
+
+
+def fit_expanded_scene_y(
+    anchor_y: int,
+    screen_height: int,
+    window_height: int,
+    *,
+    default_origin_y: int = 55,
+    reserved_bottom: int = 48,
+) -> tuple[int, int]:
+    """Fit the expanded window while preserving the figure's screen anchor."""
+    maximum_y = max(0, screen_height - window_height - reserved_bottom)
+    window_y = min(max(0, anchor_y - default_origin_y), maximum_y)
+    return window_y, anchor_y - window_y
 
 
 class CanvasTooltip:
@@ -78,8 +135,10 @@ class CanvasTooltip:
 
 
 class StickFigurePet(tk.Canvas):
-    FULL_SIZE = (470, 270)
+    FULL_SIZE = (500, 320)
     COMPACT_SIZE = (220, 250)
+    FULL_SCENE_ORIGIN = (310, 55)
+    COMPACT_SCENE_ORIGIN = (20, 39)
 
     def __init__(self, master: tk.Widget, settings: Settings) -> None:
         super().__init__(
@@ -96,14 +155,25 @@ class StickFigurePet(tk.Canvas):
         self.task_title = "Codex 任务"
         self.elapsed = "--:--"
         self.activity = "没有活动任务"
+        self.task_rows: tuple[tuple[str, str, str, str, str], ...] = ()
         self.hooks_ready = False
         self.pulse = 0.0
         self.compact = settings.compact_mode
+        self.full_scene_origin_y = min(max(39, settings.full_scene_origin_y), 110)
         self._draw()
 
     @property
     def size(self) -> tuple[int, int]:
         return self.COMPACT_SIZE if self.compact else self.FULL_SIZE
+
+    @property
+    def scene_origin(self) -> tuple[int, int]:
+        if self.compact:
+            return self.COMPACT_SCENE_ORIGIN
+        return self.FULL_SCENE_ORIGIN[0], self.full_scene_origin_y
+
+    def set_full_scene_origin_y(self, origin_y: int) -> None:
+        self.full_scene_origin_y = min(max(39, origin_y), 110)
 
     def set_compact(self, compact: bool) -> None:
         self.compact = compact
@@ -118,12 +188,14 @@ class StickFigurePet(tk.Canvas):
         task_title: str,
         elapsed: str,
         activity: str,
+        task_rows: tuple[tuple[str, str, str, str, str], ...] = (),
     ) -> None:
         self.status = status
         self.phase = phase
         self.task_title = task_title
         self.elapsed = elapsed
         self.activity = activity
+        self.task_rows = task_rows
 
     def set_hooks_ready(self, ready: bool) -> None:
         if ready != self.hooks_ready:
@@ -185,20 +257,25 @@ class StickFigurePet(tk.Canvas):
         self.delete("all")
         if self.compact:
             self._draw_compact_label()
-            self._draw_scene(20, 39, 1.0)
+            self._draw_scene(*self.scene_origin, 1.0)
         else:
             self._draw_bubble()
-            self._draw_scene(280, 42, 1.02)
+            self._draw_scene(*self.scene_origin, 1.0)
 
     def _draw_compact_label(self) -> None:
         status_name, color = STATUS_STYLE.get(self.status, STATUS_STYLE[IDLE])
+        compact_status = (
+            f"{status_name} · {len(self.task_rows)}"
+            if len(self.task_rows) > 1
+            else status_name
+        )
         self._round_rect(45, 4, 175, 36, 8, fill=PAPER, outline=BORDER, width=1)
         self.create_polygon(101, 35, 110, 45, 119, 35, fill=PAPER, outline=BORDER)
         self.create_oval(57, 16, 65, 24, fill=color, outline="")
         self.create_text(
             72,
             20,
-            text=status_name,
+            text=compact_status,
             fill=TEXT,
             anchor="w",
             font=("Microsoft YaHei UI", 9, "bold"),
@@ -206,18 +283,19 @@ class StickFigurePet(tk.Canvas):
 
     def _draw_bubble(self) -> None:
         status_name, color = STATUS_STYLE.get(self.status, STATUS_STYLE[IDLE])
+        pointer_shift = self.full_scene_origin_y - self.FULL_SCENE_ORIGIN[1]
         self.create_polygon(
-            247,
-            82,
-            281,
-            102,
-            247,
-            119,
+            295,
+            91 + pointer_shift,
+            318,
+            108 + pointer_shift,
+            295,
+            126 + pointer_shift,
             fill=PAPER,
             outline=BORDER,
             width=2,
         )
-        self._round_rect(8, 10, 252, 218, 8, fill=PAPER, outline=BORDER, width=2)
+        self._round_rect(8, 10, 300, 308, 8, fill=PAPER, outline=BORDER, width=2)
 
         self.create_oval(24, 27, 36, 39, fill=color, outline="")
         self.create_text(
@@ -230,9 +308,9 @@ class StickFigurePet(tk.Canvas):
         )
 
         icon_tags = ("action", "action:sound")
-        self.create_rectangle(188, 19, 212, 43, fill=PAPER, outline="", tags=icon_tags)
+        self.create_rectangle(236, 19, 260, 43, fill=PAPER, outline="", tags=icon_tags)
         self.create_text(
-            200,
+            248,
             31,
             text="♪",
             fill=MUTED if self.settings.sound_enabled else RED,
@@ -240,12 +318,12 @@ class StickFigurePet(tk.Canvas):
             tags=icon_tags,
         )
         if not self.settings.sound_enabled:
-            self.create_line(194, 37, 206, 24, fill=RED, width=2, tags=icon_tags)
+            self.create_line(242, 37, 254, 24, fill=RED, width=2, tags=icon_tags)
 
         close_tags = ("action", "action:close")
-        self.create_rectangle(218, 19, 242, 43, fill=PAPER, outline="", tags=close_tags)
+        self.create_rectangle(266, 19, 290, 43, fill=PAPER, outline="", tags=close_tags)
         self.create_text(
-            230,
+            278,
             30,
             text="×",
             fill=MUTED,
@@ -259,35 +337,85 @@ class StickFigurePet(tk.Canvas):
             text=self.phase,
             fill=TEXT,
             anchor="w",
-            width=205,
+            width=250,
             font=("Microsoft YaHei UI", 10),
         )
+        self.create_line(24, 79, 284, 79, fill=SOFT, width=1)
+
+        rows = list(self.task_rows[:4])
+        if len(self.task_rows) > 4:
+            rows = [
+                *self.task_rows[:3],
+                (f"另有 {len(self.task_rows) - 3} 个任务", "", MUTED, "", ""),
+            ]
+        if not rows:
+            self.create_text(
+                24,
+                104,
+                text="当前没有任务",
+                fill=MUTED,
+                anchor="w",
+                font=("Microsoft YaHei UI", 9),
+            )
+        for index, (title, state_text, state_color, row_elapsed, session_id) in enumerate(rows):
+            row_y = 96 + index * 23
+            row_tags = ("action", f"action:thread:{session_id}") if session_id else ()
+            self.create_rectangle(
+                18,
+                row_y - 10,
+                290,
+                row_y + 10,
+                fill=PAPER,
+                outline="",
+                tags=row_tags,
+            )
+            self.create_oval(
+                24,
+                row_y - 4,
+                32,
+                row_y + 4,
+                fill=state_color,
+                outline="",
+                tags=row_tags,
+            )
+            self.create_text(
+                40,
+                row_y,
+                text=title,
+                fill=TEXT,
+                anchor="w",
+                width=150,
+                font=("Microsoft YaHei UI", 9),
+                tags=row_tags,
+            )
+            detail = " ".join(part for part in (state_text, row_elapsed) if part)
+            self.create_text(
+                284,
+                row_y,
+                text=detail,
+                fill=state_color,
+                anchor="e",
+                font=("Cascadia Mono", 8),
+                tags=row_tags,
+            )
+
         self.create_text(
             24,
-            90,
-            text=self.task_title,
+            190,
+            text=self.activity,
             fill=MUTED,
             anchor="w",
-            width=205,
-            font=("Microsoft YaHei UI", 9),
+            width=260,
+            font=("Microsoft YaHei UI", 8),
         )
-        self.create_text(
-            24,
-            116,
-            text=f"{self.elapsed}   {self.activity}",
-            fill=MUTED,
-            anchor="w",
-            width=205,
-            font=("Cascadia Mono", 9),
-        )
-        self.create_line(24, 136, 236, 136, fill=SOFT, width=1)
+        self.create_line(24, 205, 284, 205, fill=SOFT, width=1)
 
         hook_color = GREEN if self.hooks_ready else AMBER
         hook_text = "Hooks 已连接" if self.hooks_ready else "当前使用日志监控"
-        self.create_oval(24, 151, 32, 159, fill=hook_color, outline="")
+        self.create_oval(24, 220, 32, 228, fill=hook_color, outline="")
         self.create_text(
             40,
-            155,
+            224,
             text=hook_text,
             fill=MUTED,
             anchor="w",
@@ -296,10 +424,10 @@ class StickFigurePet(tk.Canvas):
         if not self.hooks_ready:
             self._action_box(
                 "hooks",
-                184,
-                143,
-                236,
-                168,
+                232,
+                212,
+                284,
+                237,
                 label="连接",
                 fill="#FFF4D8",
                 foreground="#9A6500",
@@ -309,15 +437,15 @@ class StickFigurePet(tk.Canvas):
         self._action_box(
             "open",
             24,
-            179,
-            145,
-            205,
+            269,
+            168,
+            296,
             label="打开 Codex",
             fill=INK,
             foreground=PAPER,
             font=("Microsoft YaHei UI", 9, "bold"),
         )
-        self._action_box("compact", 153, 179, 236, 205, label="收起")
+        self._action_box("compact", 178, 269, 284, 296, label="收起")
 
     def _draw_scene(self, origin_x: float, origin_y: float, scale: float) -> None:
         if self.status == RUNNING:
@@ -825,14 +953,22 @@ class StickFigurePet(tk.Canvas):
 class CodexDesktopPetApp:
     ACTION_TOOLTIPS = {
         "sound": "开启或关闭声音",
-        "close": "退出桌宠",
+        "close": "隐藏到系统托盘",
         "hooks": "连接 Codex Hooks",
         "open": "打开 Codex",
         "compact": "切换迷你模式",
     }
 
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(
+        self,
+        root: tk.Tk,
+        show_event_handle: int = 0,
+        tray: SystemTray | None = None,
+    ) -> None:
         self.root = root
+        self.show_event_handle = show_event_handle
+        self.tray = tray or SystemTray("Codex 桌宠 - 空闲待命")
+        self.tray.start()
         self.settings = Settings.load()
         self.worker = MonitorWorker()
         self.worker.start()
@@ -845,6 +981,7 @@ class CodexDesktopPetApp:
         self._pressed_action: str | None = None
         self._dragging = False
         self._last_integration_check = 0.0
+        self._closing = False
 
         self.root.title("Codex 桌宠")
         self.root.configure(bg=TRANSPARENT)
@@ -855,7 +992,7 @@ class CodexDesktopPetApp:
             self.root.attributes("-transparentcolor", TRANSPARENT)
         except tk.TclError:
             pass
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.root.protocol("WM_DELETE_WINDOW", self.hide)
 
         self.pet = StickFigurePet(root, self.settings)
         self.pet.pack()
@@ -893,6 +1030,17 @@ class CodexDesktopPetApp:
         self.topmost_var = tk.BooleanVar(value=self.settings.always_on_top)
         self.startup_var = tk.BooleanVar(value=starts_with_windows())
         self.menu.add_command(label="打开 Codex", command=open_codex)
+        self.task_menu = tk.Menu(
+            self.menu,
+            tearoff=False,
+            bg=PAPER,
+            fg=TEXT,
+            activebackground=SOFT,
+            activeforeground=TEXT,
+            font=("Microsoft YaHei UI", 9),
+        )
+        self.menu.add_cascade(label="任务（0）", menu=self.task_menu)
+        self._task_menu_index = self.menu.index("end")
         self.menu.add_separator()
         self.menu.add_checkbutton(label="声音提醒", variable=self.sound_var, command=self._menu_sound)
         self.menu.add_checkbutton(label="始终置顶", variable=self.topmost_var, command=self._menu_topmost)
@@ -901,6 +1049,7 @@ class CodexDesktopPetApp:
         self.menu.add_command(label="修复 Hooks", command=self.enable_hooks)
         self.menu.add_separator()
         self.menu.add_command(label="显示/隐藏状态气泡", command=self.toggle_compact)
+        self.menu.add_command(label="隐藏到系统托盘", command=self.hide)
         self.menu.add_command(label="退出桌宠", command=self.close)
 
     def _show_menu(self, event: tk.Event) -> None:
@@ -908,6 +1057,7 @@ class CodexDesktopPetApp:
         self.sound_var.set(self.settings.sound_enabled)
         self.topmost_var.set(self.settings.always_on_top)
         self.startup_var.set(starts_with_windows())
+        self._refresh_task_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -932,6 +1082,7 @@ class CodexDesktopPetApp:
         self._dragging = True
         x = event.x_root - self._drag_offset[0]
         y = event.y_root - self._drag_offset[1]
+        x, y = self._bounded_window_position(x, y)
         self.root.geometry(f"+{x}+{y}")
 
     def _pointer_up(self, event: tk.Event) -> None:
@@ -951,9 +1102,14 @@ class CodexDesktopPetApp:
         action = self.pet.action_at(event.x, event.y)
         self.pet.configure(cursor="hand2" if action else "fleur")
         key = action or ""
+        tooltip = (
+            "打开这个 Codex 任务"
+            if key.startswith("thread:")
+            else self.ACTION_TOOLTIPS.get(key, "")
+        )
         self.tooltip.schedule(
             key,
-            self.ACTION_TOOLTIPS.get(key, ""),
+            tooltip,
             event.x_root,
             event.y_root,
         )
@@ -962,13 +1118,15 @@ class CodexDesktopPetApp:
         if action == "sound":
             self.toggle_sound()
         elif action == "close":
-            self.close()
+            self.hide()
         elif action == "hooks":
             self.enable_hooks()
         elif action == "open":
             open_codex()
         elif action == "compact":
             self.toggle_compact()
+        elif action.startswith("thread:"):
+            open_codex_thread(action.partition(":")[2])
 
     def _place_window(self) -> None:
         self.root.update_idletasks()
@@ -984,17 +1142,47 @@ class CodexDesktopPetApp:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _apply_mode(self, initial: bool = False) -> None:
-        self.pet.set_compact(self.settings.compact_mode)
-        width, height = self.pet.size
+        old_origin = self.pet.scene_origin
         if initial:
+            self.pet.set_compact(self.settings.compact_mode)
+            width, height = self.pet.size
             self.root.geometry(f"{width}x{height}")
             return
-        x, y = self.root.winfo_x(), self.root.winfo_y()
+
+        anchor_x = self.root.winfo_x() + old_origin[0]
+        anchor_y = self.root.winfo_y() + old_origin[1]
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
-        x = min(max(0, x), max(0, screen_w - width))
-        y = min(max(0, y), max(0, screen_h - height - 48))
+
+        if self.settings.compact_mode:
+            self.pet.set_compact(True)
+            width, height = self.pet.size
+            new_origin = self.pet.scene_origin
+            x, y = anchor_x - new_origin[0], anchor_y - new_origin[1]
+            x = min(max(0, x), max(0, screen_w - width))
+            y = min(max(0, y), max(0, screen_h - height - 48))
+        else:
+            width, height = self.pet.FULL_SIZE
+            y, origin_y = fit_expanded_scene_y(anchor_y, screen_h, height)
+            self.pet.set_full_scene_origin_y(origin_y)
+            self.settings.full_scene_origin_y = self.pet.full_scene_origin_y
+            self.pet.set_compact(False)
+            new_origin = self.pet.scene_origin
+            x = anchor_x - new_origin[0]
+            x = min(max(0, x), max(0, screen_w - width))
+
         self.root.geometry(f"{width}x{height}+{x}+{y}")
+        self.root.update_idletasks()
+        self._save_position()
+
+    def _bounded_window_position(self, x: int, y: int) -> tuple[int, int]:
+        width, height = self.pet.size
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        return (
+            min(max(0, x), max(0, screen_w - width)),
+            min(max(0, y), max(0, screen_h - height - 48)),
+        )
 
     def toggle_compact(self) -> None:
         self.tooltip.hide()
@@ -1040,11 +1228,28 @@ class CodexDesktopPetApp:
         )
 
     def _tick(self) -> None:
+        if self._handle_tray_actions():
+            return
+        if consume_named_event(self.show_event_handle):
+            self.show()
         snapshot = self.worker.snapshot()
         self._render(snapshot)
         self._handle_alerts(snapshot)
         self._update_integration()
-        self.root.after(250, self._tick)
+        self.root.after(150, self._tick)
+
+    def _handle_tray_actions(self) -> bool:
+        while True:
+            action = self.tray.poll_action()
+            if action is None:
+                return False
+            if action == "show":
+                self.show()
+            elif action == "open_codex":
+                open_codex()
+            elif action == "exit":
+                self.close()
+                return True
 
     def _animate(self) -> None:
         self.pet.animate()
@@ -1069,8 +1274,41 @@ class CodexDesktopPetApp:
             parts.append(f"{snapshot.running_count} 运行中")
         if snapshot.error_count:
             parts.append(f"{snapshot.error_count} 异常")
+        if snapshot.cancelled_count:
+            parts.append(f"{snapshot.cancelled_count} 已终止")
+        if snapshot.recent_completed_count:
+            parts.append(f"{snapshot.recent_completed_count} 已完成")
         activity = " · ".join(parts) if parts else "没有活动任务"
-        self.pet.set_snapshot(snapshot.status, phase, task_title, elapsed, activity)
+        status_name = STATUS_STYLE.get(snapshot.status, STATUS_STYLE[IDLE])[0]
+        task_count = len(snapshot.visible_tasks)
+        tray_count = f"（{task_count}）" if task_count else ""
+        self.tray.set_tooltip(f"Codex 桌宠 - {status_name}{tray_count}")
+        task_rows = tuple(
+            (
+                self._truncate(item.title, 18),
+                TASK_STATUS_STYLE.get(item.status, TASK_STATUS_STYLE[IDLE])[0],
+                TASK_STATUS_STYLE.get(item.status, TASK_STATUS_STYLE[IDLE])[1],
+                self._elapsed(item.started_at, item.updated_at, item.status),
+                item.session_id,
+            )
+            for item in snapshot.visible_tasks
+        )
+        self.pet.set_snapshot(snapshot.status, phase, task_title, elapsed, activity, task_rows)
+
+    def _refresh_task_menu(self) -> None:
+        self.task_menu.delete(0, "end")
+        tasks = self._last_snapshot.visible_tasks
+        self.menu.entryconfigure(self._task_menu_index, label=f"任务（{len(tasks)}）")
+        if not tasks:
+            self.task_menu.add_command(label="当前没有任务", state="disabled")
+            return
+        for task in tasks:
+            state_text = TASK_STATUS_STYLE.get(task.status, TASK_STATUS_STYLE[IDLE])[0]
+            title = self._truncate(task.title, 32)
+            self.task_menu.add_command(
+                label=f"{state_text}  {title}",
+                command=lambda session_id=task.session_id: open_codex_thread(session_id),
+            )
 
     def _handle_alerts(self, snapshot: AggregateSnapshot) -> None:
         current = {task.session_id: task.status for task in snapshot.tasks}
@@ -1123,6 +1361,25 @@ class CodexDesktopPetApp:
         self.settings.window_y = self.root.winfo_y()
         self.settings.save()
 
+    def hide(self) -> None:
+        if not self.tray.available:
+            detail = f"\n\n{self.tray.error}" if self.tray.error else ""
+            messagebox.showerror(
+                "Codex 桌宠",
+                f"系统托盘图标未能启动，桌宠不会隐藏。{detail}",
+            )
+            return
+        self.tooltip.hide()
+        self._save_position()
+        self.root.withdraw()
+
+    def show(self) -> None:
+        self.root.deiconify()
+        self.root.lift()
+        if self.settings.always_on_top:
+            self.root.attributes("-topmost", True)
+        self.root.focus_force()
+
     @staticmethod
     def _truncate(text: str, limit: int) -> str:
         cleaned = " ".join(text.split())
@@ -1139,8 +1396,12 @@ class CodexDesktopPetApp:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
 
     def close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
         self.tooltip.hide()
         self.worker.stop()
+        self.tray.stop()
         self._save_position()
         self.root.destroy()
 
@@ -1150,6 +1411,20 @@ CodexTrafficLightApp = CodexDesktopPetApp
 
 
 def run_app() -> None:
-    root = tk.Tk()
-    CodexDesktopPetApp(root)
-    root.mainloop()
+    mutex = 0
+    show_event = 0
+    event_name = "Local\\CodexDesktopPet.ShowWindow"
+    if os.environ.get("CODEX_DESKTOP_PET_WINDOWED") != "1":
+        mutex = acquire_single_instance("Local\\CodexDesktopPet.SingleInstance")
+        if mutex is None:
+            signal_named_event(event_name)
+            focus_window_by_title("Codex 桌宠")
+            return
+        show_event = create_named_event(event_name)
+    try:
+        root = tk.Tk()
+        CodexDesktopPetApp(root, show_event)
+        root.mainloop()
+    finally:
+        close_named_handle(show_event)
+        release_single_instance(mutex)

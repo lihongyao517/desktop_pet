@@ -14,14 +14,39 @@ $legacyStartupFile = Join-Path $startupDir "CodexTrafficLight.vbs"
 $migrateStartup = Test-Path -LiteralPath $legacyStartupFile
 $distUi = Join-Path $sourceRoot "dist\CodexDesktopPet.exe"
 $distHook = Join-Path $sourceRoot "dist\CodexDesktopPetHook.exe"
+$installedUi = Join-Path $installDir "CodexDesktopPet.exe"
+$sourceIcon = Join-Path $sourceRoot "assets\CodexDesktopPet.ico"
+$installedIcon = Join-Path $installDir "CodexDesktopPet.ico"
+
+$running = @(
+    Get-Process -Name "CodexDesktopPet" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $installedUi }
+)
+if ($running.Count) {
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 150
+        $remaining = @(
+            Get-Process -Name "CodexDesktopPet" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Path -eq $installedUi }
+        )
+    } while ($remaining.Count -and [DateTime]::UtcNow -lt $deadline)
+    if ($remaining.Count) {
+        throw "Unable to stop the running Codex Desktop Pet before update."
+    }
+}
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+if (Test-Path -LiteralPath $sourceIcon) {
+    Copy-Item -LiteralPath $sourceIcon -Destination $installedIcon -Force
+}
 
 $mode = "source"
 if ((Test-Path -LiteralPath $distUi) -and (Test-Path -LiteralPath $distHook)) {
-    Copy-Item -LiteralPath $distUi -Destination (Join-Path $installDir "CodexDesktopPet.exe") -Force
+    Copy-Item -LiteralPath $distUi -Destination $installedUi -Force
     Copy-Item -LiteralPath $distHook -Destination (Join-Path $installDir "CodexDesktopPetHook.exe") -Force
-    $uiTarget = Join-Path $installDir "CodexDesktopPet.exe"
+    $uiTarget = $installedUi
     $hookTarget = Join-Path $installDir "CodexDesktopPetHook.exe"
     $uiArguments = ""
     $mode = "exe"
@@ -44,7 +69,11 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $uiTarget
 $shortcut.Arguments = $uiArguments
 $shortcut.WorkingDirectory = $installDir
-$shortcut.IconLocation = $uiTarget
+if (Test-Path -LiteralPath $installedIcon) {
+    $shortcut.IconLocation = "$installedIcon,0"
+} else {
+    $shortcut.IconLocation = "$uiTarget,0"
+}
 $shortcut.Description = "Codex stick-figure desktop pet"
 $shortcut.Save()
 if (Test-Path -LiteralPath $legacyShortcutPath) {
