@@ -11,7 +11,7 @@
 - 任务已终止：主动中止会单独标记为“已终止”，不会误报为异常。
 - 遇到异常：低头沮丧，并播放异常提示音。
 
-所有桌宠场景均由 Canvas 矢量图元实时绘制，不依赖位图素材；粗轮廓带有浅色描边，可适应明暗不同的桌面背景。
+所有桌宠场景均由 C# GDI+ 矢量图元实时绘制，不依赖位图素材；粗轮廓带有浅色描边，可适应明暗不同的桌面背景。
 
 状态气泡会显示当前阶段、任务名称、已运行时间和活动任务数量。Codex 没有提供可信的百分比进度，因此桌宠不会虚构完成百分比。
 完整版气泡会逐行显示当前任务的名称、状态和独立计时；最多直接预览 4 行，右键菜单中的“任务”子菜单会列出全部任务。点击任意任务可直接打开对应的 Codex 任务。
@@ -59,20 +59,16 @@ Hook 桥接只保存会话 ID、工作目录、状态、阶段和时间。它不
 
 ## 开发与测试
 
-桌宠运行时只使用 Python 标准库；构建图标需要 Pillow，打包需要 PyInstaller。源码运行：
+项目使用 C#、WinForms 和 .NET Framework 4.8。主程序和 Hook 桥接均为独立 Windows EXE，不依赖 Python、PyInstaller 或额外运行时包。
+
+源码位于 `src/CodexDesktopPet` 和 `src/CodexDesktopPetHook`。构建和测试：
 
 ```powershell
-python main.py
-```
-
-测试和打包：
-
-```powershell
-python -m unittest discover -v
+.\test.ps1
 .\build.ps1
 ```
 
-桌宠场景由 Tk Canvas 矢量绘制；程序图标的可编辑矢量原稿位于 `assets/CodexDesktopPet.svg`，构建时会生成 Windows 多尺寸 ICO。
+构建脚本使用 Windows 自带的 .NET Framework C# 编译器。程序图标的可编辑矢量原稿位于 `assets/CodexDesktopPet.svg`，发布图标为多尺寸 Windows ICO。
 
 ## 卸载
 

@@ -5,12 +5,9 @@ $legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Co
 $startupFile = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\CodexDesktopPet.vbs"
 $legacyStartupFile = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\CodexTrafficLight.vbs"
 $hookExe = Join-Path $installDir "CodexDesktopPetHook.exe"
-$hookScript = Join-Path $installDir "hook_main.py"
 
 if (Test-Path -LiteralPath $hookExe) {
     & $hookExe --uninstall-hooks | Out-Host
-} elseif (Test-Path -LiteralPath $hookScript) {
-    python $hookScript --uninstall-hooks | Out-Host
 }
 
 Get-Process -Name "CodexDesktopPet" -ErrorAction SilentlyContinue | Stop-Process -Force

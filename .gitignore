@@ -1,6 +1,6 @@
-__pycache__/
-*.py[cod]
 build/
 dist/
-*.spec
-
+__pycache__/
+*.pyc
+*.user
+*.suo
