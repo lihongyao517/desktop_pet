@@ -91,6 +91,27 @@ namespace CodexDesktopPet
             return OpenCodex();
         }
 
+        public static bool OpenAgent(string provider, string sessionId, string cwd)
+        {
+            string command = provider == "claude" ? "claude" : provider == "opencode" ? "opencode" : provider == "antigravity" ? "agy" : provider;
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(command) { UseShellExecute = true };
+                bool resumable = !String.IsNullOrWhiteSpace(sessionId) && !sessionId.StartsWith("process-", StringComparison.OrdinalIgnoreCase);
+                if (resumable && provider == "claude") start.Arguments = "--resume " + QuoteArgument(sessionId);
+                else if (resumable && provider == "opencode") start.Arguments = "--session " + QuoteArgument(sessionId);
+                if (!String.IsNullOrWhiteSpace(cwd) && Directory.Exists(cwd)) start.WorkingDirectory = cwd;
+                Process.Start(start);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            return "\"" + (value ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
+
         private static bool StartUri(string uri)
         {
             try

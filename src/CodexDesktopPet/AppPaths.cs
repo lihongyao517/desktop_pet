@@ -30,6 +30,7 @@ namespace CodexDesktopPet
         }
 
         public static string SettingsFile { get { return Path.Combine(DataDirectory, "settings.json"); } }
+        public static string ReviewedTasksFile { get { return Path.Combine(DataDirectory, "reviewed-tasks.json"); } }
         public static string TaskStateDirectory { get { return Path.Combine(DataDirectory, "tasks"); } }
         public static string HooksFile { get { return Path.Combine(CodexHome, "hooks.json"); } }
 

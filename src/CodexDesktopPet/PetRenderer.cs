@@ -57,7 +57,7 @@ namespace CodexDesktopPet
             if (status == TaskStatus.Approval) return "等你批准";
             if (status == TaskStatus.Error) return "遇到异常";
             if (status == TaskStatus.Running) return "正在工作";
-            if (status == TaskStatus.Completed) return "任务完成";
+            if (status == TaskStatus.Completed) return "任务完成，待检查";
             if (status == TaskStatus.Cancelled) return "任务已终止";
             return "空闲待命";
         }
@@ -76,13 +76,13 @@ namespace CodexDesktopPet
             if (status == TaskStatus.Running) return "运行中";
             if (status == TaskStatus.Error) return "异常";
             if (status == TaskStatus.Cancelled) return "已终止";
-            if (status == TaskStatus.Completed) return "已完成";
+            if (status == TaskStatus.Completed) return "待检查";
             return "空闲";
         }
 
         private static void DrawCompactLabel(Graphics g, AggregateSnapshot snapshot)
         {
-            string text = StatusName(snapshot.Status);
+            string text = snapshot.Status == TaskStatus.Completed ? "待检查" : StatusName(snapshot.Status);
             if (snapshot.VisibleTasks.Count > 1) text += " · " + snapshot.VisibleTasks.Count;
             RoundRect(g, new Rectangle(45, 4, 130, 32), 8, Paper, Border, 1);
             using (Brush paper = new SolidBrush(Paper))
@@ -137,13 +137,13 @@ namespace CodexDesktopPet
             if (snapshot.RunningCount > 0) activity.Add(snapshot.RunningCount + " 运行中");
             if (snapshot.ErrorCount > 0) activity.Add(snapshot.ErrorCount + " 异常");
             if (snapshot.CancelledCount > 0) activity.Add(snapshot.CancelledCount + " 已终止");
-            if (snapshot.CompletedCount > 0) activity.Add(snapshot.CompletedCount + " 已完成");
+            if (snapshot.CompletedCount > 0) activity.Add(snapshot.CompletedCount + " 待检查");
             DrawText(g, activity.Count == 0 ? "没有活动任务" : String.Join(" · ", activity.ToArray()), SmallFont, Muted, new Rectangle(24, 180, 260, 20), StringAlignment.Near, StringAlignment.Center);
             using (Pen divider = new Pen(Soft, 1)) g.DrawLine(divider, 24, 205, 284, 205);
 
             Color hookColor = hooksReady ? Green : Amber;
             using (Brush dot = new SolidBrush(hookColor)) g.FillEllipse(dot, 24, 220, 8, 8);
-            DrawText(g, hooksReady ? "Hooks 已连接" : "当前使用日志监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
+            DrawText(g, hooksReady ? "Agent 已连接" : "日志 / CLI 自动监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
             if (!hooksReady) ActionBox(g, new Rectangle(232, 212, 52, 25), "连接", Color.FromArgb(255, 244, 216), Color.FromArgb(154, 101, 0));
             ActionBox(g, new Rectangle(24, 269, 144, 27), "打开 Codex", Ink, Paper);
             ActionBox(g, new Rectangle(178, 269, 106, 27), "收起", Soft, Ink);
@@ -154,7 +154,8 @@ namespace CodexDesktopPet
             int y = 96 + index * 23;
             Color color = StatusColor(task.Status);
             using (Brush dot = new SolidBrush(color)) g.FillEllipse(dot, 24, y - 4, 8, 8);
-            DrawText(g, Truncate(task.Title, 18), SmallFont, Ink, new Rectangle(40, y - 10, 150, 20), StringAlignment.Near, StringAlignment.Center);
+            string provider = task.Provider == "codex" ? "" : AgentProcessMonitor.ProviderName(task.Provider) + " · ";
+            DrawText(g, Truncate(provider + task.Title, 18), SmallFont, Ink, new Rectangle(40, y - 10, 150, 20), StringAlignment.Near, StringAlignment.Center);
             string detail = TaskStatusName(task.Status) + " " + Elapsed(task);
             DrawText(g, detail, MonoFont, color, new Rectangle(190, y - 10, 94, 20), StringAlignment.Far, StringAlignment.Center);
         }

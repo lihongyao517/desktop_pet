@@ -21,6 +21,7 @@ $references = @(
     "/reference:System.Core.dll",
     "/reference:System.Drawing.dll",
     "/reference:System.Windows.Forms.dll",
+    "/reference:System.Management.dll",
     "/reference:System.Web.Extensions.dll"
 )
 $mainSources = Get-ChildItem -LiteralPath (Join-Path $root "src\CodexDesktopPet") -Filter "*.cs" |

@@ -17,13 +17,16 @@ $references = @(
     "/reference:System.Core.dll",
     "/reference:System.Drawing.dll",
     "/reference:System.Windows.Forms.dll",
+    "/reference:System.Management.dll",
     "/reference:System.Web.Extensions.dll"
 )
 $sources = @(
     (Join-Path $root "src\CodexDesktopPet\AppPaths.cs"),
     (Join-Path $root "src\CodexDesktopPet\JsonUtil.cs"),
     (Join-Path $root "src\CodexDesktopPet\Models.cs"),
+    (Join-Path $root "src\CodexDesktopPet\ReviewStateStore.cs"),
     (Join-Path $root "src\CodexDesktopPet\HookBridge.cs"),
+    (Join-Path $root "src\CodexDesktopPet\AgentProcessMonitor.cs"),
     (Join-Path $root "src\CodexDesktopPet\HookIntegration.cs"),
     (Join-Path $root "src\CodexDesktopPet\CodexMonitor.cs"),
     (Join-Path $root "src\CodexDesktopPet\PetRenderer.cs"),

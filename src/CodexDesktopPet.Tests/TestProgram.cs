@@ -14,10 +14,14 @@ namespace CodexDesktopPet
         {
             Run("Aggregate priority", TestAggregatePriority);
             Run("Unread completion lifecycle", TestUnreadCompletion);
+            Run("Completion review persistence", TestCompletionReview);
+            Run("Multi-agent task identity", TestMultiAgentIdentity);
             Run("Bottom-right anchor", TestBottomAnchor);
             Run("Hook state bridge", TestHookBridge);
             Run("Hook install preservation", TestHookIntegration);
             Run("Session log lifecycle", TestSessionLogLifecycle);
+            Run("Claude and OpenCode adapters", TestAgentAdapters);
+            Run("CLI provider detection", TestProviderDetection);
             Console.WriteLine("C# tests: {0} passed, {1} failed", passed, failed);
             return failed == 0 ? 0 : 1;
         }
@@ -42,10 +46,40 @@ namespace CodexDesktopPet
             completed.Unread = true;
             AggregateSnapshot unread = AggregateResolver.Resolve(new TaskSnapshot[] { completed }, 100000);
             Equal(TaskStatus.Completed, unread.Status);
+            Equal("任务完成，待检查", PetRenderer.StatusName(unread.Status));
+            Equal("待检查", PetRenderer.TaskStatusName(unread.Status));
             completed.Unread = false;
             AggregateSnapshot read = AggregateResolver.Resolve(new TaskSnapshot[] { completed }, 100000);
             Equal(TaskStatus.Idle, read.Status);
             Equal(0, read.VisibleTasks.Count);
+        }
+
+        private static void TestCompletionReview()
+        {
+            string directory = TemporaryDirectory();
+            try
+            {
+                string path = Path.Combine(directory, "reviewed.json");
+                TaskSnapshot task = Task("same-session", TaskStatus.Completed, 100);
+                task.Provider = "claude";
+                ReviewStateStore first = new ReviewStateStore(path);
+                True(!first.IsReviewed(task));
+                first.MarkReviewed(task);
+                True(first.IsReviewed(task));
+                ReviewStateStore reloaded = new ReviewStateStore(path);
+                True(reloaded.IsReviewed(task));
+                task.UpdatedAt = 101;
+                True(!reloaded.IsReviewed(task));
+            }
+            finally { Directory.Delete(directory, true); }
+        }
+
+        private static void TestMultiAgentIdentity()
+        {
+            TaskSnapshot codex = Task("same-session", TaskStatus.Running, 1);
+            TaskSnapshot claude = Task("same-session", TaskStatus.Running, 1);
+            claude.Provider = "claude";
+            True(CodexMonitor.TaskKey(codex) != CodexMonitor.TaskKey(claude));
         }
 
         private static void TestBottomAnchor()
@@ -69,10 +103,20 @@ namespace CodexDesktopPet
                 payload["hook_event_name"] = "UserPromptSubmit";
                 payload["session_id"] = "session-a";
                 payload["cwd"] = "C:\\work";
-                string path = HookBridge.WriteState(payload, directory);
+                string path = HookBridge.WriteState(payload, directory, "claude");
                 Dictionary<string, object> data = JsonUtil.ParseObject(File.ReadAllText(path));
                 Equal(TaskStatus.Running, JsonUtil.StringValue(data, "status", ""));
                 Equal("session-a", JsonUtil.StringValue(data, "session_id", ""));
+                payload["hook_event_name"] = "StopFailure";
+                path = HookBridge.WriteState(payload, directory, "claude");
+                data = JsonUtil.ParseObject(File.ReadAllText(path));
+                Equal(TaskStatus.Error, JsonUtil.StringValue(data, "status", ""));
+                payload["hook_event_name"] = "Stop";
+                path = HookBridge.WriteState(payload, directory, "claude");
+                payload["hook_event_name"] = "SessionEnd";
+                HookBridge.WriteState(payload, directory, "claude");
+                data = JsonUtil.ParseObject(File.ReadAllText(path));
+                Equal(TaskStatus.Completed, JsonUtil.StringValue(data, "status", ""));
             }
             finally { Directory.Delete(directory, true); }
         }
@@ -125,6 +169,35 @@ namespace CodexDesktopPet
                 Equal(TaskStatus.Completed, parser.ReadUpdates().Status);
             }
             finally { Directory.Delete(directory, true); }
+        }
+
+        private static void TestAgentAdapters()
+        {
+            string directory = TemporaryDirectory();
+            try
+            {
+                string claude = Path.Combine(directory, "claude-settings.json");
+                File.WriteAllText(claude, "{\"env\":{\"KEEP\":\"1\"}}");
+                HookIntegration.InstallClaude(claude, "C:\\CodexDesktopPetHook.exe");
+                string claudeText = File.ReadAllText(claude);
+                True(claudeText.Contains("Codex Desktop Pet status bridge (claude)"));
+                True(claudeText.Contains("KEEP"));
+                string plugin = HookIntegration.InstallOpenCode(Path.Combine(directory, "codex-desktop-pet.js"));
+                True(File.ReadAllText(plugin).Contains("session.idle"));
+                True(File.ReadAllText(plugin).Contains("session.status"));
+                True(File.ReadAllText(plugin).Contains("relevant.includes"));
+                True(File.ReadAllText(plugin).Contains("--provider opencode"));
+            }
+            finally { Directory.Delete(directory, true); }
+        }
+
+        private static void TestProviderDetection()
+        {
+            Equal("claude", AgentProcessMonitor.DetectProvider("node.exe", "@anthropic-ai\\claude-code\\cli.js"));
+            Equal("opencode", AgentProcessMonitor.DetectProvider("opencode.exe", "opencode"));
+            Equal("antigravity", AgentProcessMonitor.DetectProvider("agy.exe", "agy"));
+            Equal(null, AgentProcessMonitor.DetectProvider("cmd.exe", "cmd /c claude"));
+            Equal(null, AgentProcessMonitor.DetectProvider("python.exe", "python helper.py"));
         }
 
         private static TaskSnapshot Task(string id, string status, double updated)

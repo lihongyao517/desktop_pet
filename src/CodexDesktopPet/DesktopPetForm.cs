@@ -163,7 +163,7 @@ namespace CodexDesktopPet
             if ((DateTime.UtcNow - lastHookCheck).TotalSeconds >= 5)
             {
                 lastHookCheck = DateTime.UtcNow;
-                hooksReady = HookIntegration.IsInstalled();
+                hooksReady = HookIntegration.IsInstalled() || HookIntegration.IsClaudeInstalled() || HookIntegration.IsOpenCodeInstalled();
             }
             UpdateTrayText();
             Invalidate();
@@ -171,7 +171,7 @@ namespace CodexDesktopPet
 
         private void HandleAlerts(AggregateSnapshot next)
         {
-            Dictionary<string, string> current = next.Tasks.ToDictionary(item => item.SessionId, item => item.Status);
+            Dictionary<string, string> current = next.Tasks.ToDictionary(CodexMonitor.TaskKey, item => item.Status);
             if (!baselineReady)
             {
                 foreach (KeyValuePair<string, string> pair in current) previousStatuses[pair.Key] = pair.Value;
@@ -182,7 +182,7 @@ namespace CodexDesktopPet
             foreach (TaskSnapshot task in next.Tasks)
             {
                 string previous;
-                if (!previousStatuses.TryGetValue(task.SessionId, out previous) || previous == task.Status) continue;
+                if (!previousStatuses.TryGetValue(CodexMonitor.TaskKey(task), out previous) || previous == task.Status) continue;
                 approval |= task.Status == TaskStatus.Approval;
                 error |= task.Status == TaskStatus.Error;
                 completed |= task.Status == TaskStatus.Completed;
@@ -225,9 +225,10 @@ namespace CodexDesktopPet
             if (snapshot.VisibleTasks.Count == 0) tasks.DropDownItems.Add(new ToolStripMenuItem("当前没有任务") { Enabled = false });
             foreach (TaskSnapshot task in snapshot.VisibleTasks)
             {
-                string sessionId = task.SessionId;
-                tasks.DropDownItems.Add(PetRenderer.TaskStatusName(task.Status) + "  " + Truncate(task.Title, 32), null,
-                    delegate { WindowsIntegration.OpenCodexThread(sessionId); });
+                TaskSnapshot selectedTask = task.Clone();
+                string providerLabel = selectedTask.Provider == "codex" ? "Codex" : AgentProcessMonitor.ProviderName(selectedTask.Provider);
+                tasks.DropDownItems.Add(PetRenderer.TaskStatusName(task.Status) + "  [" + providerLabel + "]  " + Truncate(task.Title, 28), null,
+                    delegate { OpenTask(selectedTask); });
             }
             petMenu.Items.Add(tasks);
             petMenu.Items.Add(new ToolStripSeparator());
@@ -245,7 +246,12 @@ namespace CodexDesktopPet
             };
             petMenu.Items.Add(startup);
             petMenu.Items.Add("测试声音", null, delegate { AudioAlerts.Play("test"); });
-            petMenu.Items.Add("修复 Hooks", null, delegate { EnableHooks(); });
+            ToolStripMenuItem agents = new ToolStripMenuItem("连接 Agent");
+            agents.DropDownItems.Add("Codex Hooks", null, delegate { EnableHooks(); });
+            agents.DropDownItems.Add("Claude Code Hooks", null, delegate { ConnectClaude(); });
+            agents.DropDownItems.Add("OpenCode 插件", null, delegate { ConnectOpenCode(); });
+            agents.DropDownItems.Add("CLI 进程监控（自动）", null, null).Enabled = false;
+            petMenu.Items.Add(agents);
             petMenu.Items.Add(new ToolStripSeparator());
             petMenu.Items.Add(settings.CompactMode ? "展开状态气泡" : "收起状态气泡", null, delegate { ToggleCompact(); });
             petMenu.Items.Add("隐藏到系统托盘", null, delegate { HideToTray(); });
@@ -259,7 +265,12 @@ namespace CodexDesktopPet
             else if (action == "hooks") EnableHooks();
             else if (action == "open") WindowsIntegration.OpenCodex();
             else if (action == "compact") ToggleCompact();
-            else if (action != null && action.StartsWith("thread:")) WindowsIntegration.OpenCodexThread(action.Substring(7));
+            else if (action != null && action.StartsWith("task:"))
+            {
+                TaskSnapshot task = snapshot.VisibleTasks.FirstOrDefault(item =>
+                    CodexMonitor.TaskKey(item) == action.Substring(5));
+                OpenTask(task);
+            }
         }
 
         private string HitAction(Point point)
@@ -268,7 +279,8 @@ namespace CodexDesktopPet
             if (new Rectangle(236, 19, 24, 24).Contains(point)) return "sound";
             if (new Rectangle(266, 19, 24, 24).Contains(point)) return "close";
             for (int index = 0; index < Math.Min(4, snapshot.VisibleTasks.Count); index++)
-                if (new Rectangle(18, 86 + index * 23, 272, 20).Contains(point)) return "thread:" + snapshot.VisibleTasks[index].SessionId;
+                if (new Rectangle(18, 86 + index * 23, 272, 20).Contains(point))
+                    return "task:" + CodexMonitor.TaskKey(snapshot.VisibleTasks[index]);
             if (!hooksReady && new Rectangle(232, 212, 52, 25).Contains(point)) return "hooks";
             if (new Rectangle(24, 269, 144, 27).Contains(point)) return "open";
             if (new Rectangle(178, 269, 106, 27).Contains(point)) return "compact";
@@ -282,8 +294,24 @@ namespace CodexDesktopPet
             if (action == "hooks") return "连接 Codex Hooks";
             if (action == "open") return "打开 Codex";
             if (action == "compact") return "切换迷你模式";
-            if (action != null && action.StartsWith("thread:")) return "打开这个 Codex 任务";
+            if (action != null && action.StartsWith("task:")) return "打开这个 Agent 任务";
             return "";
+        }
+
+        private void OpenTask(TaskSnapshot task)
+        {
+            if (task == null) return;
+            bool opened = task.Provider == "codex"
+                ? WindowsIntegration.OpenCodexThread(task.SessionId)
+                : WindowsIntegration.OpenAgent(task.Provider, task.SessionId, task.Cwd);
+            if (opened && task.Status == TaskStatus.Completed)
+            {
+                monitor.MarkReviewed(task);
+                foreach (TaskSnapshot item in snapshot.Tasks)
+                    if (CodexMonitor.TaskKey(item) == CodexMonitor.TaskKey(task)) item.Unread = false;
+                snapshot = AggregateResolver.Resolve(snapshot.Tasks, HookBridge.UnixNow());
+                Invalidate();
+            }
         }
 
         private void EnableHooks()
@@ -298,6 +326,28 @@ namespace CodexDesktopPet
             {
                 MessageBox.Show(error.Message, "Codex 桌宠", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void ConnectClaude()
+        {
+            try
+            {
+                string path = HookIntegration.InstallClaude();
+                hooksReady = true;
+                MessageBox.Show("Claude Code Hooks 已写入：\r\n" + path + "\r\n\r\n重启 Claude Code 后生效。", "Codex 桌宠", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception error) { MessageBox.Show(error.Message, "Codex 桌宠", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void ConnectOpenCode()
+        {
+            try
+            {
+                string path = HookIntegration.InstallOpenCode();
+                hooksReady = true;
+                MessageBox.Show("OpenCode 插件已写入：\r\n" + path + "\r\n\r\n重启 OpenCode 后生效。", "Codex 桌宠", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception error) { MessageBox.Show(error.Message, "Codex 桌宠", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
         private void ToggleCompact()

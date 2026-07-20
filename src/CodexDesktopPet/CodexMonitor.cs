@@ -14,11 +14,17 @@ namespace CodexDesktopPet
         private readonly object sync = new object();
         private readonly Dictionary<string, TaskSnapshot> tasks = new Dictionary<string, TaskSnapshot>();
         private readonly Dictionary<string, SessionLogParser> parsers = new Dictionary<string, SessionLogParser>(StringComparer.OrdinalIgnoreCase);
+        private readonly AgentProcessMonitor processMonitor = new AgentProcessMonitor();
+        private readonly ReviewStateStore reviewState = new ReviewStateStore(AppPaths.ReviewedTasksFile);
         private readonly Dictionary<string, long> stateTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> titles = new Dictionary<string, string>();
         private HashSet<string> unreadIds;
         private long titleTime;
         private long unreadTime;
+        private double unreadStateUpdatedAt;
+        private DateTime lastAdapterCheck = DateTime.MinValue;
+        private bool claudeAdapterReady;
+        private bool openCodeAdapterReady;
         private DateTime lastDiscovery = DateTime.MinValue;
         private DateTime lastFullDiscovery = DateTime.MinValue;
         private AggregateSnapshot current = new AggregateSnapshot();
@@ -44,6 +50,11 @@ namespace CodexDesktopPet
             if (worker != null && worker.IsAlive) worker.Join(1500);
         }
 
+        public void MarkReviewed(TaskSnapshot task)
+        {
+            reviewState.MarkReviewed(task);
+        }
+
         private void Run()
         {
             while (!stopping)
@@ -63,6 +74,7 @@ namespace CodexDesktopPet
             LoadTitles();
             LoadUnreadIds();
             ScanHookStates();
+            ScanAgentProcesses();
             DiscoverSessions();
             foreach (SessionLogParser parser in parsers.Values.ToList()) Merge(parser.ReadUpdates());
             ApplyTitlesAndUnread();
@@ -84,6 +96,8 @@ namespace CodexDesktopPet
                     if (value != null) loaded.Add(Convert.ToString(value, CultureInfo.InvariantCulture));
                 unreadIds = loaded;
                 unreadTime = modified;
+                unreadStateUpdatedAt = (File.GetLastWriteTimeUtc(path) -
+                    new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
             }
             catch { }
         }
@@ -143,6 +157,7 @@ namespace CodexDesktopPet
                     snapshot.UpdatedAt = JsonUtil.DoubleValue(data, "updated_at", 0);
                     snapshot.StartedAt = JsonUtil.DoubleValue(data, "started_at", 0);
                     snapshot.Source = "hook";
+                    snapshot.Provider = JsonUtil.StringValue(data, "provider", "codex");
                     Merge(snapshot);
                 }
                 catch { }
@@ -180,9 +195,10 @@ namespace CodexDesktopPet
         {
             if (incoming == null || String.IsNullOrEmpty(incoming.SessionId)) return;
             TaskSnapshot previous;
-            if (!tasks.TryGetValue(incoming.SessionId, out previous))
+            string key = TaskKey(incoming);
+            if (!tasks.TryGetValue(key, out previous))
             {
-                tasks[incoming.SessionId] = incoming.Clone();
+                tasks[key] = incoming.Clone();
                 return;
             }
             if (incoming.UpdatedAt < previous.UpdatedAt) return;
@@ -192,7 +208,7 @@ namespace CodexDesktopPet
             if (String.IsNullOrEmpty(merged.Cwd)) merged.Cwd = previous.Cwd;
             if (String.IsNullOrEmpty(merged.TurnId)) merged.TurnId = previous.TurnId;
             merged.Unread = previous.Unread;
-            tasks[incoming.SessionId] = merged;
+            tasks[key] = merged;
         }
 
         private void ApplyTitlesAndUnread()
@@ -200,9 +216,55 @@ namespace CodexDesktopPet
             foreach (TaskSnapshot task in tasks.Values)
             {
                 string title;
-                if (titles.TryGetValue(task.SessionId, out title)) task.Title = title;
-                if (unreadIds != null) task.Unread = unreadIds.Contains(task.SessionId);
+                if (task.Provider == "codex" && titles.TryGetValue(task.SessionId, out title)) task.Title = title;
+                if (task.Status != TaskStatus.Completed) continue;
+                if (reviewState.IsReviewed(task))
+                {
+                    task.Unread = false;
+                    continue;
+                }
+                if (task.Provider != "codex")
+                {
+                    task.Unread = true;
+                    continue;
+                }
+                if (unreadIds == null)
+                {
+                    task.Unread = true;
+                    continue;
+                }
+                if (unreadIds.Contains(task.SessionId))
+                {
+                    task.Unread = true;
+                    continue;
+                }
+                double now = HookBridge.UnixNow();
+                bool statePredatesCompletion = unreadStateUpdatedAt + 1 < task.UpdatedAt;
+                task.Unread = now - task.UpdatedAt <= 5 || statePredatesCompletion;
             }
+        }
+
+        private void ScanAgentProcesses()
+        {
+            if ((DateTime.UtcNow - lastAdapterCheck).TotalSeconds >= 5)
+            {
+                lastAdapterCheck = DateTime.UtcNow;
+                claudeAdapterReady = HookIntegration.IsClaudeInstalled();
+                openCodeAdapterReady = HookIntegration.IsOpenCodeInstalled();
+            }
+            Dictionary<string, TaskSnapshot> active = processMonitor.Scan();
+            List<TaskSnapshot> accepted = active.Values.Where(task =>
+                !(task.Provider == "claude" && claudeAdapterReady) &&
+                !(task.Provider == "opencode" && openCodeAdapterReady)).ToList();
+            HashSet<string> activeKeys = new HashSet<string>(accepted.Select(TaskKey), StringComparer.OrdinalIgnoreCase);
+            foreach (string oldKey in tasks.Keys.Where(key => tasks[key].Source == "process" && !activeKeys.Contains(key)).ToList())
+                tasks.Remove(oldKey);
+            foreach (TaskSnapshot task in accepted) Merge(task);
+        }
+
+        internal static string TaskKey(TaskSnapshot task)
+        {
+            return ReviewStateStore.Key(task == null ? "codex" : task.Provider, task == null ? "" : task.SessionId);
         }
 
         internal static string TitleFallback(string cwd)
@@ -245,6 +307,7 @@ namespace CodexDesktopPet
                 SessionId = match.Success ? match.Groups[1].Value : Path.GetFileNameWithoutExtension(path),
                 Title = "Codex 任务",
                 Source = "session-log"
+                ,Provider = "codex"
             };
         }
 

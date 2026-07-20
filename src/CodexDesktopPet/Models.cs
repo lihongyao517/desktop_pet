@@ -25,6 +25,7 @@ namespace CodexDesktopPet
         public double UpdatedAt;
         public double StartedAt;
         public string Source = "unknown";
+        public string Provider = "codex";
         public bool? Unread;
 
         public TaskSnapshot Clone()
