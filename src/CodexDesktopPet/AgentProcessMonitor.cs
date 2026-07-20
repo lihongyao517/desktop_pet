@@ -17,7 +17,7 @@ namespace CodexDesktopPet
             Dictionary<string, TaskSnapshot> current = new Dictionary<string, TaskSnapshot>();
             try
             {
-                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT ProcessId, Name, CommandLine FROM Win32_Process"))
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT ProcessId, Name, CommandLine, CreationDate FROM Win32_Process"))
                 using (ManagementObjectCollection processes = searcher.Get())
                 {
                     foreach (ManagementObject process in processes)
@@ -31,7 +31,7 @@ namespace CodexDesktopPet
                         string id = "process-" + provider + "-" + pid;
                         double now = HookBridge.UnixNow();
                         TaskSnapshot previous;
-                        double started = now;
+                        double started = ProcessCreationTime(process, now);
                         if (last.TryGetValue(id, out previous) && previous.StartedAt > 0)
                             started = previous.StartedAt;
                         current[id] = new TaskSnapshot
@@ -40,7 +40,7 @@ namespace CodexDesktopPet
                             Provider = provider,
                             Source = "process",
                             Status = TaskStatus.Running,
-                            Phase = "CLI 进程运行中",
+                            Phase = "TUI 运行中",
                             Title = ProviderName(provider) + " CLI (PID " + pid + ")",
                             UpdatedAt = now,
                             StartedAt = started
@@ -66,7 +66,25 @@ namespace CodexDesktopPet
             if (value.Contains("gemini") || name.StartsWith("gemini")) return "gemini";
             if (value.Contains("aider") || name.StartsWith("aider")) return "aider";
             if (value.Contains("cursor-agent")) return "cursor";
+            if (value.Contains("qwen-code") || name.StartsWith("qwen")) return "qwen";
+            if (name.StartsWith("goose") || value.Contains("\\goose") || value.Contains("/goose")) return "goose";
+            if (value.Contains("kimi-cli") || name.StartsWith("kimi")) return "kimi";
             return null;
+        }
+
+        private static double ProcessCreationTime(ManagementObject process, double fallback)
+        {
+            try
+            {
+                string raw = Convert.ToString(process["CreationDate"] ?? "");
+                if (!String.IsNullOrEmpty(raw))
+                {
+                    DateTime created = ManagementDateTimeConverter.ToDateTime(raw).ToUniversalTime();
+                    return (created - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+                }
+            }
+            catch { }
+            return fallback;
         }
 
         internal static string ProviderName(string provider)
@@ -77,6 +95,9 @@ namespace CodexDesktopPet
             if (provider == "gemini") return "Gemini CLI";
             if (provider == "aider") return "Aider";
             if (provider == "cursor") return "Cursor Agent";
+            if (provider == "qwen") return "Qwen Code";
+            if (provider == "goose") return "Goose";
+            if (provider == "kimi") return "Kimi CLI";
             return provider;
         }
     }

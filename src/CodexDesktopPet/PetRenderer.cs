@@ -143,7 +143,7 @@ namespace CodexDesktopPet
 
             Color hookColor = hooksReady ? Green : Amber;
             using (Brush dot = new SolidBrush(hookColor)) g.FillEllipse(dot, 24, 220, 8, 8);
-            DrawText(g, hooksReady ? "Agent 已连接" : "日志 / CLI 自动监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
+            DrawText(g, hooksReady ? "Agent 已连接" : "日志 / TUI 自动监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
             if (!hooksReady) ActionBox(g, new Rectangle(232, 212, 52, 25), "连接", Color.FromArgb(255, 244, 216), Color.FromArgb(154, 101, 0));
             ActionBox(g, new Rectangle(24, 269, 144, 27), "打开 Codex", Ink, Paper);
             ActionBox(g, new Rectangle(178, 269, 106, 27), "收起", Soft, Ink);

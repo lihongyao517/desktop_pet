@@ -2,7 +2,7 @@
 
 一个 Windows 火柴人桌宠，用来聚合显示本机多个 Agent 的任务状态。它会通过动作和表情展示当前状态，并在需要权限批准、任务完成或异常中止时播放不同声音。
 
-桌宠可以同时监控 Codex、Claude Code、OpenCode、Antigravity CLI、Gemini CLI、Aider 和 Cursor Agent。每个任务在菜单中保留自己的 Agent 来源，任务数量和状态按所有 Agent 合并计算。
+桌宠可以同时监控 Codex、Claude Code、OpenCode、Antigravity CLI、Gemini CLI、Aider、Cursor Agent、Qwen Code、Goose 和 Kimi CLI。每个任务在菜单中保留自己的 Agent 来源，任务数量和状态按所有 Agent 合并计算。
 
 ## 桌宠状态
 
@@ -37,7 +37,7 @@
 
 首次安装后，在 Codex 中输入 `/hooks`，审核并信任状态为 `Codex Desktop Pet status bridge` 的 hooks。新任务会立即使用 hooks；当前已经运行的任务仍可通过本地会话日志被监控。
 
-右键桌宠的“连接 Agent”菜单可以按需安装 Claude Code Hooks 或 OpenCode 插件，安装前会为已有配置创建时间戳备份。Claude Code 和 OpenCode 的 Hook/插件会提供精确的会话阶段；Antigravity、Gemini CLI、Aider、Cursor Agent 等没有安装本地桥接配置时，会通过 Windows 进程命令行自动监控活动 CLI，显示为“CLI 进程运行中”。CLI 进程退出后对应的临时任务会自动移除，不会把用户主动关闭误报为异常。
+右键桌宠的“连接 Agent”菜单可以按需安装 Claude Code Hooks 或 OpenCode 插件，安装前会为已有配置创建时间戳备份。Claude Code 和 OpenCode 的 Hook/插件会提供精确的会话阶段；其他 CLI 会通过 Windows 进程命令行自动监控活动 TUI，显示真实进程启动时间和“TUI 运行中”。TUI 进程退出后对应的临时任务会自动移除，不会把用户主动关闭误报为异常。超过 7 天且已读的 Hook 历史状态会自动清理，未检查的完成任务不会被清理。
 
 需要开机启动时，可以右键桌宠并勾选“开机启动”，也可以安装时运行：
 

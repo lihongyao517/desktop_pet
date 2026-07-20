@@ -23,6 +23,7 @@ namespace CodexDesktopPet
         private long unreadTime;
         private double unreadStateUpdatedAt;
         private DateTime lastAdapterCheck = DateTime.MinValue;
+        private DateTime lastPrune = DateTime.MinValue;
         private bool claudeAdapterReady;
         private bool openCodeAdapterReady;
         private DateTime lastDiscovery = DateTime.MinValue;
@@ -78,6 +79,7 @@ namespace CodexDesktopPet
             DiscoverSessions();
             foreach (SessionLogParser parser in parsers.Values.ToList()) Merge(parser.ReadUpdates());
             ApplyTitlesAndUnread();
+            PruneHistory();
             return AggregateResolver.Resolve(tasks.Values, HookBridge.UnixNow());
         }
 
@@ -260,6 +262,22 @@ namespace CodexDesktopPet
             foreach (string oldKey in tasks.Keys.Where(key => tasks[key].Source == "process" && !activeKeys.Contains(key)).ToList())
                 tasks.Remove(oldKey);
             foreach (TaskSnapshot task in accepted) Merge(task);
+        }
+
+        private void PruneHistory()
+        {
+            DateTime now = DateTime.UtcNow;
+            if ((now - lastPrune).TotalSeconds < 30) return;
+            lastPrune = now;
+            double current = HookBridge.UnixNow();
+            foreach (string key in tasks.Keys.Where(key =>
+                tasks[key].Source == "hook" &&
+                tasks[key].Unread != true &&
+                tasks[key].UpdatedAt > 0 &&
+                current - tasks[key].UpdatedAt > 7 * 24 * 3600).ToList())
+                tasks.Remove(key);
+            foreach (string path in stateTimes.Keys.Where(path => !File.Exists(path)).ToList())
+                stateTimes.Remove(path);
         }
 
         internal static string TaskKey(TaskSnapshot task)

@@ -196,6 +196,9 @@ namespace CodexDesktopPet
             Equal("claude", AgentProcessMonitor.DetectProvider("node.exe", "@anthropic-ai\\claude-code\\cli.js"));
             Equal("opencode", AgentProcessMonitor.DetectProvider("opencode.exe", "opencode"));
             Equal("antigravity", AgentProcessMonitor.DetectProvider("agy.exe", "agy"));
+            Equal("qwen", AgentProcessMonitor.DetectProvider("node.exe", "qwen-code\\bin\\cli.js"));
+            Equal("goose", AgentProcessMonitor.DetectProvider("goose.exe", "goose"));
+            Equal("kimi", AgentProcessMonitor.DetectProvider("node.exe", "kimi-cli\bin\run.js"));
             Equal(null, AgentProcessMonitor.DetectProvider("cmd.exe", "cmd /c claude"));
             Equal(null, AgentProcessMonitor.DetectProvider("python.exe", "python helper.py"));
         }
