@@ -17,6 +17,7 @@ namespace CodexDesktopPet
             Run("Completion review persistence", TestCompletionReview);
             Run("Multi-agent task identity", TestMultiAgentIdentity);
             Run("Bottom-right anchor", TestBottomAnchor);
+            Run("Left-edge expansion anchor", TestHorizontalAnchor);
             Run("Hook state bridge", TestHookBridge);
             Run("Hook install preservation", TestHookIntegration);
             Run("Session log lifecycle", TestSessionLogLifecycle);
@@ -92,6 +93,27 @@ namespace CodexDesktopPet
             Equal(712, windowY);
             Equal(109, originY);
             Equal(anchor, windowY + originY);
+        }
+
+        private static void TestHorizontalAnchor()
+        {
+            bool leftEdge = LayoutMath.ChooseBubbleOnRight(
+                20, 0, 1920, PetRenderer.FullSize.Width,
+                PetRenderer.FullOriginX, PetRenderer.FullOriginXWithRightBubble);
+            True(leftEdge);
+            int leftWindow = LayoutMath.Clamp(
+                20 - PetRenderer.FullSceneOriginX(leftEdge),
+                0, 1920 - PetRenderer.FullSize.Width);
+            Equal(20, leftWindow + PetRenderer.FullSceneOriginX(leftEdge));
+
+            bool rightEdge = LayoutMath.ChooseBubbleOnRight(
+                1720, 0, 1920, PetRenderer.FullSize.Width,
+                PetRenderer.FullOriginX, PetRenderer.FullOriginXWithRightBubble);
+            True(!rightEdge);
+            int rightWindow = LayoutMath.Clamp(
+                1720 - PetRenderer.FullSceneOriginX(rightEdge),
+                0, 1920 - PetRenderer.FullSize.Width);
+            Equal(1720, rightWindow + PetRenderer.FullSceneOriginX(rightEdge));
         }
 
         private static void TestHookBridge()

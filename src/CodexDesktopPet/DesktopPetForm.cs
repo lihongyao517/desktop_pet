@@ -77,7 +77,7 @@ namespace CodexDesktopPet
         protected override void OnPaint(PaintEventArgs args)
         {
             base.OnPaint(args);
-            PetRenderer.Draw(args.Graphics, snapshot, settings.CompactMode, settings.FullSceneOriginY, pulse, settings.SoundEnabled, hooksReady);
+            PetRenderer.Draw(args.Graphics, snapshot, settings.CompactMode, settings.FullSceneOriginY, settings.BubbleOnRight, pulse, settings.SoundEnabled, hooksReady);
         }
 
         protected override void OnMouseDown(MouseEventArgs args)
@@ -276,14 +276,15 @@ namespace CodexDesktopPet
         private string HitAction(Point point)
         {
             if (settings.CompactMode) return null;
-            if (new Rectangle(236, 19, 24, 24).Contains(point)) return "sound";
-            if (new Rectangle(266, 19, 24, 24).Contains(point)) return "close";
+            int offset = settings.BubbleOnRight ? PetRenderer.RightBubbleOffset : 0;
+            if (new Rectangle(236 + offset, 19, 24, 24).Contains(point)) return "sound";
+            if (new Rectangle(266 + offset, 19, 24, 24).Contains(point)) return "close";
             for (int index = 0; index < Math.Min(4, snapshot.VisibleTasks.Count); index++)
-                if (new Rectangle(18, 86 + index * 23, 272, 20).Contains(point))
+                if (new Rectangle(18 + offset, 86 + index * 23, 272, 20).Contains(point))
                     return "task:" + CodexMonitor.TaskKey(snapshot.VisibleTasks[index]);
-            if (!hooksReady && new Rectangle(232, 212, 52, 25).Contains(point)) return "hooks";
-            if (new Rectangle(24, 269, 144, 27).Contains(point)) return "open";
-            if (new Rectangle(178, 269, 106, 27).Contains(point)) return "compact";
+            if (!hooksReady && new Rectangle(232 + offset, 212, 52, 25).Contains(point)) return "hooks";
+            if (new Rectangle(24 + offset, 269, 144, 27).Contains(point)) return "open";
+            if (new Rectangle(178 + offset, 269, 106, 27).Contains(point)) return "compact";
             return null;
         }
 
@@ -366,11 +367,19 @@ namespace CodexDesktopPet
             else
             {
                 ClientSize = PetRenderer.FullSize;
+                settings.BubbleOnRight = LayoutMath.ChooseBubbleOnRight(
+                    anchor.X,
+                    work.Left,
+                    work.Right,
+                    Width,
+                    PetRenderer.FullOriginX,
+                    PetRenderer.FullOriginXWithRightBubble);
                 int y;
                 int originY;
                 LayoutMath.FitExpandedVertically(anchor.Y, work.Top, work.Bottom, Height, out y, out originY);
                 settings.FullSceneOriginY = originY;
-                int x = LayoutMath.Clamp(anchor.X - PetRenderer.FullOriginX, work.Left, work.Right - Width);
+                int sceneOriginX = PetRenderer.FullSceneOriginX(settings.BubbleOnRight);
+                int x = LayoutMath.Clamp(anchor.X - sceneOriginX, work.Left, work.Right - Width);
                 Location = new Point(x, y);
             }
             SavePosition();
@@ -379,7 +388,9 @@ namespace CodexDesktopPet
 
         private Point SceneOrigin()
         {
-            return settings.CompactMode ? PetRenderer.CompactOrigin : new Point(PetRenderer.FullOriginX, settings.FullSceneOriginY);
+            return settings.CompactMode
+                ? PetRenderer.CompactOrigin
+                : new Point(PetRenderer.FullSceneOriginX(settings.BubbleOnRight), settings.FullSceneOriginY);
         }
 
         private void ApplyInitialPosition()

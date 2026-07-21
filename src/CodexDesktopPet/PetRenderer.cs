@@ -13,6 +13,8 @@ namespace CodexDesktopPet
         public static readonly Size CompactSize = new Size(220, 250);
         public static readonly Point CompactOrigin = new Point(20, 39);
         public const int FullOriginX = 310;
+        public const int FullOriginXWithRightBubble = 20;
+        public const int RightBubbleOffset = 192;
         public const int DefaultFullOriginY = 55;
 
         public static readonly Color Transparent = Color.FromArgb(1, 2, 3);
@@ -38,6 +40,7 @@ namespace CodexDesktopPet
             AggregateSnapshot snapshot,
             bool compact,
             int fullOriginY,
+            bool bubbleOnRight,
             double pulse,
             bool soundEnabled,
             bool hooksReady)
@@ -47,9 +50,14 @@ namespace CodexDesktopPet
             graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             graphics.Clear(Transparent);
             if (compact) DrawCompactLabel(graphics, snapshot);
-            else DrawBubble(graphics, snapshot, fullOriginY, soundEnabled, hooksReady);
-            Point origin = compact ? CompactOrigin : new Point(FullOriginX, fullOriginY);
+            else DrawBubble(graphics, snapshot, fullOriginY, bubbleOnRight, soundEnabled, hooksReady);
+            Point origin = compact ? CompactOrigin : new Point(FullSceneOriginX(bubbleOnRight), fullOriginY);
             DrawScene(graphics, snapshot.Status, origin.X, origin.Y, pulse);
+        }
+
+        public static int FullSceneOriginX(bool bubbleOnRight)
+        {
+            return bubbleOnRight ? FullOriginXWithRightBubble : FullOriginX;
         }
 
         public static string StatusName(string status)
@@ -96,57 +104,62 @@ namespace CodexDesktopPet
             DrawText(g, text, SmallBoldFont, Ink, new Rectangle(72, 10, 95, 20), StringAlignment.Near, StringAlignment.Center);
         }
 
-        private static void DrawBubble(Graphics g, AggregateSnapshot snapshot, int originY, bool soundEnabled, bool hooksReady)
+        private static void DrawBubble(Graphics g, AggregateSnapshot snapshot, int originY, bool bubbleOnRight, bool soundEnabled, bool hooksReady)
         {
             int shift = originY - DefaultFullOriginY;
             using (Brush paper = new SolidBrush(Paper))
             using (Pen border = new Pen(Border, 2))
             {
-                Point[] pointer = new Point[]
-                {
-                    new Point(295, 91 + shift), new Point(318, 108 + shift), new Point(295, 126 + shift)
-                };
+                Point[] pointer = bubbleOnRight
+                    ? new Point[] { new Point(205, 91 + shift), new Point(182, 108 + shift), new Point(205, 126 + shift) }
+                    : new Point[] { new Point(295, 91 + shift), new Point(318, 108 + shift), new Point(295, 126 + shift) };
                 g.FillPolygon(paper, pointer);
                 g.DrawPolygon(border, pointer);
             }
-            RoundRect(g, new Rectangle(8, 10, 292, 298), 8, Paper, Border, 2);
-            using (Brush color = new SolidBrush(StatusColor(snapshot.Status))) g.FillEllipse(color, 24, 27, 12, 12);
-            DrawText(g, StatusName(snapshot.Status), StatusFont, Ink, new Rectangle(44, 20, 185, 27), StringAlignment.Near, StringAlignment.Center);
-            DrawText(g, soundEnabled ? "♪" : "♩", SymbolFont, soundEnabled ? Muted : Red, new Rectangle(236, 19, 24, 24), StringAlignment.Center, StringAlignment.Center);
-            DrawText(g, "×", SymbolFont, Muted, new Rectangle(266, 19, 24, 24), StringAlignment.Center, StringAlignment.Center);
-
-            string phase = snapshot.Selected == null ? "等待新任务" : Truncate(snapshot.Selected.Phase, 24);
-            DrawText(g, phase, BodyFont, Ink, new Rectangle(24, 52, 260, 22), StringAlignment.Near, StringAlignment.Center);
-            using (Pen divider = new Pen(Soft, 1)) g.DrawLine(divider, 24, 79, 284, 79);
-
-            List<TaskSnapshot> rows = snapshot.VisibleTasks.Take(4).ToList();
-            bool overflow = snapshot.VisibleTasks.Count > 4;
-            if (overflow) rows = snapshot.VisibleTasks.Take(3).ToList();
-            for (int index = 0; index < rows.Count; index++) DrawTaskRow(g, rows[index], index);
-            if (overflow)
+            GraphicsState layout = g.Save();
+            g.TranslateTransform(bubbleOnRight ? RightBubbleOffset : 0, 0);
+            try
             {
-                int y = 96 + 3 * 23;
-                using (Brush dot = new SolidBrush(Muted)) g.FillEllipse(dot, 24, y - 4, 8, 8);
-                DrawText(g, "另有 " + (snapshot.VisibleTasks.Count - 3) + " 个任务", SmallFont, Ink, new Rectangle(40, y - 10, 220, 20), StringAlignment.Near, StringAlignment.Center);
+                RoundRect(g, new Rectangle(8, 10, 292, 298), 8, Paper, Border, 2);
+                using (Brush color = new SolidBrush(StatusColor(snapshot.Status))) g.FillEllipse(color, 24, 27, 12, 12);
+                DrawText(g, StatusName(snapshot.Status), StatusFont, Ink, new Rectangle(44, 20, 185, 27), StringAlignment.Near, StringAlignment.Center);
+                DrawText(g, soundEnabled ? "♪" : "♩", SymbolFont, soundEnabled ? Muted : Red, new Rectangle(236, 19, 24, 24), StringAlignment.Center, StringAlignment.Center);
+                DrawText(g, "×", SymbolFont, Muted, new Rectangle(266, 19, 24, 24), StringAlignment.Center, StringAlignment.Center);
+
+                string phase = snapshot.Selected == null ? "等待新任务" : Truncate(snapshot.Selected.Phase, 24);
+                DrawText(g, phase, BodyFont, Ink, new Rectangle(24, 52, 260, 22), StringAlignment.Near, StringAlignment.Center);
+                using (Pen divider = new Pen(Soft, 1)) g.DrawLine(divider, 24, 79, 284, 79);
+
+                List<TaskSnapshot> rows = snapshot.VisibleTasks.Take(4).ToList();
+                bool overflow = snapshot.VisibleTasks.Count > 4;
+                if (overflow) rows = snapshot.VisibleTasks.Take(3).ToList();
+                for (int index = 0; index < rows.Count; index++) DrawTaskRow(g, rows[index], index);
+                if (overflow)
+                {
+                    int y = 96 + 3 * 23;
+                    using (Brush dot = new SolidBrush(Muted)) g.FillEllipse(dot, 24, y - 4, 8, 8);
+                    DrawText(g, "另有 " + (snapshot.VisibleTasks.Count - 3) + " 个任务", SmallFont, Ink, new Rectangle(40, y - 10, 220, 20), StringAlignment.Near, StringAlignment.Center);
+                }
+                if (snapshot.VisibleTasks.Count == 0)
+                    DrawText(g, "当前没有任务", SmallFont, Muted, new Rectangle(24, 94, 220, 20), StringAlignment.Near, StringAlignment.Center);
+
+                List<string> activity = new List<string>();
+                if (snapshot.ApprovalCount > 0) activity.Add(snapshot.ApprovalCount + " 待批准");
+                if (snapshot.RunningCount > 0) activity.Add(snapshot.RunningCount + " 运行中");
+                if (snapshot.ErrorCount > 0) activity.Add(snapshot.ErrorCount + " 异常");
+                if (snapshot.CancelledCount > 0) activity.Add(snapshot.CancelledCount + " 已终止");
+                if (snapshot.CompletedCount > 0) activity.Add(snapshot.CompletedCount + " 待检查");
+                DrawText(g, activity.Count == 0 ? "没有活动任务" : String.Join(" · ", activity.ToArray()), SmallFont, Muted, new Rectangle(24, 180, 260, 20), StringAlignment.Near, StringAlignment.Center);
+                using (Pen divider = new Pen(Soft, 1)) g.DrawLine(divider, 24, 205, 284, 205);
+
+                Color hookColor = hooksReady ? Green : Amber;
+                using (Brush dot = new SolidBrush(hookColor)) g.FillEllipse(dot, 24, 220, 8, 8);
+                DrawText(g, hooksReady ? "Agent 已连接" : "日志 / TUI 自动监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
+                if (!hooksReady) ActionBox(g, new Rectangle(232, 212, 52, 25), "连接", Color.FromArgb(255, 244, 216), Color.FromArgb(154, 101, 0));
+                ActionBox(g, new Rectangle(24, 269, 144, 27), "打开 Codex", Ink, Paper);
+                ActionBox(g, new Rectangle(178, 269, 106, 27), "收起", Soft, Ink);
             }
-            if (snapshot.VisibleTasks.Count == 0)
-                DrawText(g, "当前没有任务", SmallFont, Muted, new Rectangle(24, 94, 220, 20), StringAlignment.Near, StringAlignment.Center);
-
-            List<string> activity = new List<string>();
-            if (snapshot.ApprovalCount > 0) activity.Add(snapshot.ApprovalCount + " 待批准");
-            if (snapshot.RunningCount > 0) activity.Add(snapshot.RunningCount + " 运行中");
-            if (snapshot.ErrorCount > 0) activity.Add(snapshot.ErrorCount + " 异常");
-            if (snapshot.CancelledCount > 0) activity.Add(snapshot.CancelledCount + " 已终止");
-            if (snapshot.CompletedCount > 0) activity.Add(snapshot.CompletedCount + " 待检查");
-            DrawText(g, activity.Count == 0 ? "没有活动任务" : String.Join(" · ", activity.ToArray()), SmallFont, Muted, new Rectangle(24, 180, 260, 20), StringAlignment.Near, StringAlignment.Center);
-            using (Pen divider = new Pen(Soft, 1)) g.DrawLine(divider, 24, 205, 284, 205);
-
-            Color hookColor = hooksReady ? Green : Amber;
-            using (Brush dot = new SolidBrush(hookColor)) g.FillEllipse(dot, 24, 220, 8, 8);
-            DrawText(g, hooksReady ? "Agent 已连接" : "日志 / TUI 自动监控", MonoFont, Muted, new Rectangle(40, 213, 175, 22), StringAlignment.Near, StringAlignment.Center);
-            if (!hooksReady) ActionBox(g, new Rectangle(232, 212, 52, 25), "连接", Color.FromArgb(255, 244, 216), Color.FromArgb(154, 101, 0));
-            ActionBox(g, new Rectangle(24, 269, 144, 27), "打开 Codex", Ink, Paper);
-            ActionBox(g, new Rectangle(178, 269, 106, 27), "收起", Soft, Ink);
+            finally { g.Restore(layout); }
         }
 
         private static void DrawTaskRow(Graphics g, TaskSnapshot task, int index)

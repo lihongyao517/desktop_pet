@@ -9,6 +9,7 @@ namespace CodexDesktopPet
         public bool SoundEnabled = true;
         public bool AlwaysOnTop = true;
         public bool CompactMode;
+        public bool BubbleOnRight;
         public int FullSceneOriginY = 55;
         public int ApprovalRepeatSeconds = 45;
         public int? WindowX;
@@ -25,6 +26,7 @@ namespace CodexDesktopPet
                 settings.SoundEnabled = JsonUtil.BoolValue(data, "sound_enabled", settings.SoundEnabled);
                 settings.AlwaysOnTop = JsonUtil.BoolValue(data, "always_on_top", settings.AlwaysOnTop);
                 settings.CompactMode = JsonUtil.BoolValue(data, "compact_mode", settings.CompactMode);
+                settings.BubbleOnRight = JsonUtil.BoolValue(data, "bubble_on_right", settings.BubbleOnRight);
                 settings.FullSceneOriginY = Math.Max(39, Math.Min(110, JsonUtil.IntValue(data, "full_scene_origin_y", 55)));
                 settings.ApprovalRepeatSeconds = JsonUtil.IntValue(data, "approval_repeat_seconds", 45);
                 if (JsonUtil.Get(data, "window_x") != null)
@@ -42,6 +44,7 @@ namespace CodexDesktopPet
             data["sound_enabled"] = SoundEnabled;
             data["always_on_top"] = AlwaysOnTop;
             data["compact_mode"] = CompactMode;
+            data["bubble_on_right"] = BubbleOnRight;
             data["full_scene_origin_y"] = FullSceneOriginY;
             data["approval_repeat_seconds"] = ApprovalRepeatSeconds;
             data["window_x"] = WindowX;
