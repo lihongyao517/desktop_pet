@@ -61,13 +61,13 @@ namespace CodexDesktopPet
             if (name == "cmd.exe" || name == "powershell.exe" || name == "pwsh.exe" ||
                 name == "npm.exe" || name == "npx.exe" || name == "conhost.exe") return null;
             if (value.Contains("claude-code") || value.Contains("@anthropic-ai") || name.StartsWith("claude")) return "claude";
-            if (value.Contains("opencode") || name.StartsWith("opencode")) return "opencode";
-            if (value.Contains("antigravity") || value.Contains("\\agy") || name.StartsWith("agy")) return "antigravity";
-            if (value.Contains("gemini") || name.StartsWith("gemini")) return "gemini";
-            if (value.Contains("aider") || name.StartsWith("aider")) return "aider";
-            if (value.Contains("cursor-agent")) return "cursor";
+            if (name.StartsWith("opencode") || value.Contains(" opencode") || value.Contains("\\opencode.exe")) return "opencode";
+            if (name.StartsWith("agy") || value.Contains(" agy") || value.Contains("\\agy.exe")) return "antigravity";
+            if (name.StartsWith("gemini") || value.Contains(" gemini") || value.Contains("\\gemini.exe")) return "gemini";
+            if (name.StartsWith("aider") || value.Contains(" aider") || value.Contains("\\aider.exe")) return "aider";
+            if (value.Contains("cursor-agent") || name.StartsWith("cursor")) return "cursor";
             if (value.Contains("qwen-code") || name.StartsWith("qwen")) return "qwen";
-            if (name.StartsWith("goose") || value.Contains("\\goose") || value.Contains("/goose")) return "goose";
+            if (name.StartsWith("goose") || value.Contains(" goose") || value.Contains("\\goose.exe")) return "goose";
             if (value.Contains("kimi-cli") || name.StartsWith("kimi")) return "kimi";
             return null;
         }
